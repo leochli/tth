@@ -1,7 +1,9 @@
 # src/tth/api/main.py
 from __future__ import annotations
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from tth.core.config import settings
 from tth.core.logging import configure_logging, get_logger
 import tth.core.registry as registry
@@ -68,7 +70,6 @@ app = FastAPI(
 
 app.include_router(router)
 
-
-@app.get("/")
-async def root():
-    return {"service": "tth", "version": "0.1.0", "docs": "/docs"}
+# Serve web UI at root (must come after router so /v1/* routes take precedence)
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
