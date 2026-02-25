@@ -12,18 +12,18 @@ from tth.core.types import (
     AudioChunk,
     HealthStatus,
     TurnControl,
-    estimate_mp3_duration_ms,
+    estimate_pcm_duration_ms,
 )
 
-_OPENAI_BITRATE_KBPS = 128  # tts-1 outputs 128 kbps MP3
+_OPENAI_PCM_SAMPLE_RATE = 24000  # OpenAI TTS PCM output is 24kHz 16-bit mono
 
 
 @register("openai_tts")
 class OpenAITTSAdapter(AdapterBase):
     """
-    Streams MP3 chunks from OpenAI TTS.
+    Streams PCM chunks from OpenAI TTS.
     Reuses OPENAI_API_KEY — no extra credentials needed.
-    duration_ms is computed from chunk byte count at the known bitrate.
+    PCM format (24kHz, 16-bit, mono) enables low-latency streaming playback.
     """
 
     _BASE = "https://api.openai.com/v1"
@@ -38,7 +38,7 @@ class OpenAITTSAdapter(AdapterBase):
             "input": input,
             "voice": tts_params["voice"],
             "speed": tts_params["speed"],
-            "response_format": "mp3",
+            "response_format": "pcm",
         }
         wall_ms = time.monotonic() * 1000
 
@@ -50,16 +50,16 @@ class OpenAITTSAdapter(AdapterBase):
                 json=payload,
             ) as resp:
                 resp.raise_for_status()
-                async for raw in resp.aiter_bytes(chunk_size=512):
+                async for raw in resp.aiter_bytes(chunk_size=4096):
                     if not raw:
                         continue
-                    duration = estimate_mp3_duration_ms(raw, _OPENAI_BITRATE_KBPS)
+                    duration = estimate_pcm_duration_ms(raw, _OPENAI_PCM_SAMPLE_RATE)
                     yield AudioChunk(
                         data=raw,
                         timestamp_ms=wall_ms,
                         duration_ms=duration,
                         sample_rate=24000,
-                        encoding="mp3",
+                        encoding="pcm",
                     )
                     wall_ms += duration  # advance wall clock by this chunk's duration
 

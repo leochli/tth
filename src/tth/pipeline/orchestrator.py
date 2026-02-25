@@ -78,6 +78,8 @@ class Orchestrator:
                             data=chunk.data,
                             timestamp_ms=chunk.timestamp_ms,
                             duration_ms=chunk.duration_ms,
+                            encoding=chunk.encoding,
+                            sample_rate=chunk.sample_rate,
                         )
                     )
                     session.transition("AVATAR_RUN")
