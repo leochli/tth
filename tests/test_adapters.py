@@ -37,6 +37,12 @@ def test_registry_has_stub_avatar():
     assert "stub_avatar" in list_registered()
 
 
+def test_registry_has_openai_realtime():
+    import tth.adapters.realtime.openai_realtime  # noqa
+
+    assert "openai_realtime" in list_registered()
+
+
 def test_registry_get_unknown_raises():
     with pytest.raises(KeyError, match="No adapter"):
         get("nonexistent_adapter_xyz")

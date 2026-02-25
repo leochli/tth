@@ -10,6 +10,7 @@ from tth.core.types import (
 )
 from tth.control.mapper import (
     map_emotion_to_openai_tts,
+    map_emotion_to_realtime_voice,
     build_llm_system_prompt,
     resolve,
     merge_controls,
@@ -154,3 +155,38 @@ def test_merge_controls_both_default_returns_default():
     override = TurnControl()
     result = merge_controls(base, override)
     assert result.emotion == EmotionControl()
+
+
+# ── map_emotion_to_realtime_voice ──────────────────────────────────────────────
+
+
+def test_realtime_neutral_voice():
+    result = map_emotion_to_realtime_voice(EmotionControl())
+    assert result == "alloy"
+
+
+def test_realtime_happy_voice():
+    e = EmotionControl(label=EmotionLabel.HAPPY)
+    result = map_emotion_to_realtime_voice(e)
+    assert result == "nova"
+
+
+def test_realtime_sad_voice():
+    e = EmotionControl(label=EmotionLabel.SAD)
+    result = map_emotion_to_realtime_voice(e)
+    assert result == "echo"
+
+
+def test_realtime_angry_voice():
+    e = EmotionControl(label=EmotionLabel.ANGRY)
+    result = map_emotion_to_realtime_voice(e)
+    assert result == "onyx"
+
+
+def test_realtime_all_emotions_have_voice():
+    """Every emotion label should map to a valid realtime voice."""
+    for label in EmotionLabel:
+        e = EmotionControl(label=label)
+        result = map_emotion_to_realtime_voice(e)
+        assert isinstance(result, str)
+        assert len(result) > 0

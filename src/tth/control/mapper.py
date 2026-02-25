@@ -106,6 +106,28 @@ def merge_controls(base: TurnControl, override: TurnControl) -> TurnControl:
     )
 
 
+# ── OpenAI Realtime API mappings ───────────────────────────────────────────────
+
+_REALTIME_VOICE_MAP: dict[EmotionLabel, str] = {
+    EmotionLabel.NEUTRAL: "alloy",
+    EmotionLabel.HAPPY: "nova",
+    EmotionLabel.SAD: "echo",
+    EmotionLabel.ANGRY: "onyx",
+    EmotionLabel.SURPRISED: "shimmer",
+    EmotionLabel.FEARFUL: "fable",
+    EmotionLabel.DISGUSTED: "ash",
+}
+
+
+def map_emotion_to_realtime_voice(emotion: EmotionControl) -> str:
+    """Map emotion to OpenAI Realtime API voice.
+
+    Note: Realtime API does not support speed/pitch modulation like TTS API.
+    CharacterControl params (speech_rate, pitch_shift, etc.) are ignored.
+    """
+    return _REALTIME_VOICE_MAP.get(emotion.label, "alloy")
+
+
 # ── Future provider mappings (add here when upgrading) ────────────────────────
 # def map_emotion_to_elevenlabs(emotion, character) -> dict: ...
 # def map_emotion_to_heygen(emotion, character) -> dict: ...
