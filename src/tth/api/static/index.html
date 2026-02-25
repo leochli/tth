@@ -651,7 +651,7 @@
         let ws = null;
         let sessionId = null;
         let audioContext = null;
-        let audioChunkBuffer = [];
+        let nextStartTime = 0;  // For scheduled PCM playback
         let currentAssistantMsg = null;
 
         const statusEl = document.getElementById('status');
@@ -698,7 +698,7 @@
 
         function initAudioContext() {
             if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
             }
             // Resume if suspended (browser autoplay policy)
             if (audioContext.state === 'suspended') {
@@ -706,64 +706,56 @@
             }
         }
 
-        function bufferAudioChunk(base64Data) {
+        function playPCMChunk(base64Data, sampleRate = 24000) {
             try {
+                initAudioContext();
+
+                // Decode base64 to bytes
                 const binaryString = atob(base64Data);
                 const bytes = new Uint8Array(binaryString.length);
                 for (let i = 0; i < binaryString.length; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
-                audioChunkBuffer.push(bytes);
-                debug(`Buffered audio chunk: ${bytes.length} bytes, total: ${audioChunkBuffer.length} chunks`);
-            } catch (err) {
-                console.error('Audio chunk buffer error:', err);
-                debug('Audio buffer error: ' + err.message);
-            }
-        }
 
-        async function playBufferedAudio() {
-            if (audioChunkBuffer.length === 0) {
-                debug('No audio to play');
-                return;
-            }
+                // Convert Int16 PCM to Float32 for Web Audio API
+                const int16Array = new Int16Array(bytes.buffer);
+                const float32Array = new Float32Array(int16Array.length);
+                for (let i = 0; i < int16Array.length; i++) {
+                    float32Array[i] = int16Array[i] / 32768.0;
+                }
 
-            initAudioContext();
+                // Create AudioBuffer
+                const audioBuffer = audioContext.createBuffer(1, float32Array.length, sampleRate);
+                audioBuffer.copyToChannel(float32Array, 0);
 
-            // Combine all chunks into a single buffer
-            const totalLength = audioChunkBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
-            const combinedBuffer = new Uint8Array(totalLength);
-            let offset = 0;
-            for (const chunk of audioChunkBuffer) {
-                combinedBuffer.set(chunk, offset);
-                offset += chunk.length;
-            }
-
-            debug(`Playing complete audio: ${totalLength} bytes`);
-
-            try {
-                audioIndicator.classList.remove('silent');
-
-                // Decode the complete MP3
-                const audioBuffer = await audioContext.decodeAudioData(combinedBuffer.buffer);
-
-                // Play it
+                // Schedule playback with gapless scheduling
                 const source = audioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(audioContext.destination);
 
+                const now = audioContext.currentTime;
+                const startTime = Math.max(now, nextStartTime);
+                source.start(startTime);
+                nextStartTime = startTime + audioBuffer.duration;
+
+                audioIndicator.classList.remove('silent');
+                debug(`PCM chunk: ${bytes.length} bytes, ${audioBuffer.duration.toFixed(3)}s, start: ${startTime.toFixed(2)}s`);
+
                 source.onended = () => {
-                    audioIndicator.classList.add('silent');
-                    debug('Audio playback complete');
+                    // Only mark silent if no more chunks scheduled
+                    if (nextStartTime <= audioContext.currentTime + 0.1) {
+                        audioIndicator.classList.add('silent');
+                    }
                 };
 
-                source.start(0);
-                debug(`Playing ${audioBuffer.duration.toFixed(2)}s of audio`);
-
             } catch (err) {
-                console.error('Audio playback error:', err);
-                debug('Playback error: ' + err.message);
-                audioIndicator.classList.add('silent');
+                console.error('PCM playback error:', err);
+                debug('PCM playback error: ' + err.message);
             }
+        }
+
+        function resetAudioScheduler() {
+            nextStartTime = 0;
         }
 
         async function connect() {
@@ -836,8 +828,8 @@
 
             addMessage('user', text);
 
-            // Clear audio buffer for new turn
-            audioChunkBuffer = [];
+            // Reset audio scheduler for new turn
+            resetAudioScheduler();
 
             ws.send(JSON.stringify({
                 type: 'user_text',
@@ -861,7 +853,7 @@
                     break;
 
                 case 'audio_chunk':
-                    bufferAudioChunk(event.data);
+                    playPCMChunk(event.data, event.sample_rate || 24000);
                     break;
 
                 case 'video_frame':
@@ -870,8 +862,6 @@
 
                 case 'turn_complete':
                     currentAssistantMsg = null;
-                    // Play buffered audio now that we have the complete MP3
-                    playBufferedAudio();
                     break;
 
                 case 'error':
