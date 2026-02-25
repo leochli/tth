@@ -1,0 +1,7 @@
+# v1 API-only profile: all values inherited from base.yaml
+# Uncomment lines below to upgrade individual components without changing base:
+# components:
+#   tts:
+#     primary: elevenlabs      # requires ELEVENLABS_API_KEY
+#   avatar:
+#     primary: heygen          # requires HEYGEN_API_KEY + avatar_id

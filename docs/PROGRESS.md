@@ -1,0 +1,75 @@
+# TTH Implementation Progress
+
+## Status Overview
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Core Types | Complete | All Pydantic models defined |
+| Config System | Complete | YAML + env loading |
+| Adapter Registry | Complete | Decorator-based registration |
+| LLM Adapter (OpenAI) | Complete | Streaming chat completions |
+| TTS Adapter (OpenAI) | Complete | Streaming MP3 |
+| Avatar Stub | Complete | Placeholder frames |
+| Control Mapper | Complete | Emotion + character mapping |
+| Orchestrator | Complete | Pipelined sentence streaming |
+| Session State | Complete | State machine + drift control |
+| API Endpoints | Complete | REST + WebSocket |
+| Phase Tests | Complete | Unit, offline, live tests |
+| Interactive Scripts | Complete | Test and demo with playable output |
+
+## Completed Milestones
+
+### v1 API-Only Mode
+- [x] Core types and events
+- [x] Config system with profile support
+- [x] OpenAI LLM adapter (streaming)
+- [x] OpenAI TTS adapter (streaming MP3)
+- [x] Avatar stub adapter
+- [x] Control mapping (emotion → provider params)
+- [x] Pipeline orchestrator with sentence streaming
+- [x] Session state machine
+- [x] A/V drift tracking
+- [x] REST API endpoints (`/v1/sessions`, `/v1/health`, `/v1/models`)
+- [x] WebSocket streaming protocol
+- [x] Phase-based testing (unit → offline → live)
+- [x] Interactive test script with playable output
+- [x] Interactive demo script
+
+## Acceptance Criteria
+
+- [x] `make dev` starts server
+- [x] Multi-turn conversation via WebSocket
+- [x] Turn cancellation works
+- [x] `duration_ms > 0` on all audio chunks
+- [x] `content_type` set on all video frames
+- [x] Emotion affects TTS voice/speed
+- [x] Config-driven adapter switching
+- [x] A/V drift tracked per session
+- [x] `/v1/health` and `/v1/models` endpoints
+
+## Testing Commands
+
+```bash
+# Unit tests
+make test
+
+# Offline phased tests
+make phase
+
+# Live tests (requires OPENAI_API_KEY)
+make phase-live
+
+# Interactive test with playable output
+make test-interactive MESSAGE="Hello, tell me about yourself"
+
+# Interactive demo (requires running server)
+make demo-interactive
+```
+
+## Future Work (v2)
+
+- [ ] Self-hosted LLM adapter (Ollama, vLLM)
+- [ ] Self-hosted TTS adapter (CosyVoice, F5-TTS)
+- [ ] Real avatar adapter (video synthesis)
+- [ ] Training infrastructure
+- [ ] GPU deployment config

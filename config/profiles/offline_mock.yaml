@@ -1,0 +1,15 @@
+components:
+  llm:
+    mode: api
+    primary: mock_llm
+    model: mock
+    fallback: []
+  tts:
+    mode: api
+    primary: mock_tts
+    model: mock
+    fallback: []
+  avatar:
+    mode: api
+    primary: stub_avatar
+    fallback: []
