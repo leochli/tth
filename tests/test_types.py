@@ -18,6 +18,7 @@ from tth.core.types import (
     InterruptEvent,
     ControlUpdateEvent,
     estimate_mp3_duration_ms,
+    estimate_pcm_duration_ms,
 )
 
 
@@ -111,6 +112,18 @@ def test_estimate_mp3_duration_nonzero():
     assert dur > 0
 
 
+def test_estimate_pcm_duration_ms():
+    # 4800 bytes at 24kHz 16-bit mono = 4800/2 = 2400 samples = 0.1 seconds = 100 ms
+    dur = estimate_pcm_duration_ms(b"\x00" * 4800, sample_rate=24000)
+    assert abs(dur - 100.0) < 0.01
+
+
+def test_estimate_pcm_duration_nonzero():
+    # Any non-empty chunk with even byte count must yield duration > 0
+    dur = estimate_pcm_duration_ms(b"\x00\x00", sample_rate=24000)
+    assert dur > 0
+
+
 # ── VideoFrame ────────────────────────────────────────────────────────────────
 
 
@@ -159,6 +172,26 @@ def test_audio_chunk_event_bytes_base64():
     b64 = base64.b64encode(raw).decode()
     assert b64 in j
     assert '"type":"audio_chunk"' in j
+    # Check default encoding and sample_rate
+    assert evt.encoding == "pcm"
+    assert evt.sample_rate == 24000
+
+
+def test_audio_chunk_event_with_encoding():
+    """AudioChunkEvent can specify encoding and sample_rate."""
+    import base64
+
+    raw = b"\x00\x01\x02\x03"
+    evt = AudioChunkEvent(
+        data=raw,
+        timestamp_ms=100.0,
+        duration_ms=50.0,
+        encoding="mp3",
+        sample_rate=48000,
+    )
+    j = evt.model_dump_json()
+    assert '"encoding":"mp3"' in j
+    assert '"sample_rate":48000' in j
 
 
 def test_video_frame_event_json():

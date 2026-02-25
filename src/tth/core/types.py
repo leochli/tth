@@ -57,6 +57,12 @@ def estimate_mp3_duration_ms(data: bytes, bitrate_kbps: int = 128) -> float:
     return (len(data) * 8) / (bitrate_kbps * 1000) * 1000
 
 
+def estimate_pcm_duration_ms(data: bytes, sample_rate: int = 24000) -> float:
+    """Duration of raw PCM bytes (16-bit mono)."""
+    samples = len(data) / 2  # 16-bit = 2 bytes per sample
+    return (samples / sample_rate) * 1000
+
+
 class VideoFrame(BaseModel):
     """Internal pipeline type — not sent over WS directly."""
 
@@ -97,13 +103,15 @@ class TextDeltaEvent(BaseModel):
 
 
 class AudioChunkEvent(BaseModel):
-    """WS outbound event. `data` is base64-encoded MP3 bytes in JSON transport.
-    Clients must base64-decode `data` before playback."""
+    """WS outbound event. `data` is base64-encoded audio bytes in JSON transport.
+    Clients must base64-decode `data` before playback. encoding tells client format."""
 
     type: Literal["audio_chunk"] = "audio_chunk"
     data: bytes  # base64 in JSON; raw bytes in memory
     timestamp_ms: float
     duration_ms: float
+    encoding: str = "pcm"  # "pcm" | "mp3"
+    sample_rate: int = 24000  # Hz
 
     @field_serializer("data")
     def _encode_data(self, v: bytes) -> str:
