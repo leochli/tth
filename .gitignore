@@ -6,3 +6,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+
+# Test output files
+output_*.gif
+output_*.mp3
