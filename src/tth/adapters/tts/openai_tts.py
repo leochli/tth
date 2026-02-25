@@ -50,7 +50,7 @@ class OpenAITTSAdapter(AdapterBase):
                 json=payload,
             ) as resp:
                 resp.raise_for_status()
-                async for raw in resp.aiter_bytes(chunk_size=4096):
+                async for raw in resp.aiter_bytes(chunk_size=512):
                     if not raw:
                         continue
                     duration = estimate_mp3_duration_ms(raw, _OPENAI_BITRATE_KBPS)
