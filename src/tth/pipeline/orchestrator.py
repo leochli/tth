@@ -1,33 +1,40 @@
 # src/tth/pipeline/orchestrator.py
 from __future__ import annotations
 import asyncio
-import uuid
+import logging
 from typing import Any
 from tth.adapters.base import AdapterBase
+from tth.adapters.realtime.openai_realtime import OpenAIRealtimeAdapter
 from tth.control.mapper import resolve as resolve_controls
 from tth.core.types import (
     AudioChunk,
     AudioChunkEvent,
     TextDeltaEvent,
-    TurnCompleteEvent,
     TurnControl,
     VideoFrameEvent,
 )
 from tth.pipeline.session import Session
 
-_SENTENCE_ENDS = frozenset(".!?\n")
-_MIN_SENTENCE_LEN = 10  # chars — avoid flushing on abbreviations like "Dr."
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
+    """Simplified orchestrator using OpenAI Realtime API.
+
+    IMPORTANT: realtime.connect() must be called ONCE at session start,
+    not in run_turn(). The adapter maintains a persistent WebSocket.
+
+    The Realtime API combines LLM + TTS in a single WebSocket connection,
+    streaming audio directly without sentence buffering. This significantly
+    reduces latency compared to the separate LLM → TTS pipeline.
+    """
+
     def __init__(
         self,
-        llm: AdapterBase,
-        tts: AdapterBase,
+        realtime: OpenAIRealtimeAdapter,
         avatar: AdapterBase,
     ) -> None:
-        self.llm = llm
-        self.tts = tts
+        self.realtime = realtime
         self.avatar = avatar
 
     async def run_turn(
@@ -35,78 +42,75 @@ class Orchestrator:
         session: Session,
         text: str,
         control: TurnControl,
-        output_q: asyncio.Queue,
+        output_q: asyncio.Queue[Any],
     ) -> None:
-        turn_id = str(uuid.uuid4())
         resolved = resolve_controls(control, session.persona_defaults)
 
         # Track user message in history for multi-turn context
         session.append_history("user", text)
 
-        # Bounded queue: LLM can produce at most 2 sentences ahead of TTS
-        sentence_q: asyncio.Queue[str | None] = asyncio.Queue(maxsize=2)
+        # Log warning if CharacterControl params are non-default
+        # (Realtime API doesn't support these)
+        cc = resolved.character
+        if (
+            cc.speech_rate != 1.0
+            or cc.pitch_shift != 0.0
+            or cc.expressivity != 0.6
+            or cc.motion_gain != 1.0
+        ):
+            logger.warning(
+                "CharacterControl params not supported by Realtime API: "
+                f"speech_rate={cc.speech_rate}, pitch_shift={cc.pitch_shift}, "
+                f"expressivity={cc.expressivity}, motion_gain={cc.motion_gain}"
+            )
+
         frame_counter = 0
         full_response: list[str] = []
 
-        # ── Producer: LLM → sentence buffer → sentence_q ─────────────────────
-        async def llm_producer() -> None:
-            session.transition("LLM_RUN")
-            buf = ""
-            async for token in self.llm.infer_stream(text, resolved, session.context):
-                await output_q.put(TextDeltaEvent(token=token))
-                buf += token
-                full_response.append(token)
-                # Flush on sentence boundary once buffer is long enough
-                if token[-1] in _SENTENCE_ENDS and len(buf.strip()) >= _MIN_SENTENCE_LEN:
-                    await sentence_q.put(buf.strip())
-                    buf = ""
-            if buf.strip():  # flush any trailing text
-                await sentence_q.put(buf.strip())
-            await sentence_q.put(None)  # sentinel: producer done
+        # Send user text and stream response (connection already established)
+        session.transition("LLM_RUN")
+        await self.realtime.send_user_text(text)
 
-        # ── Consumer: sentence_q → TTS → Avatar ──────────────────────────────
-        async def tts_avatar_consumer() -> None:
-            nonlocal frame_counter
-            session.transition("TTS_RUN")
-            while True:
-                sentence = await sentence_q.get()
-                if sentence is None:
-                    break  # done
-                async for chunk in self.tts.infer_stream(sentence, resolved, session.context):
+        async for event in self.realtime.stream_events():
+            await output_q.put(event)
+
+            if isinstance(event, TextDeltaEvent):
+                full_response.append(event.token)
+
+            elif isinstance(event, AudioChunkEvent):
+                session.transition("TTS_RUN")
+                session.transition("AVATAR_RUN")
+
+                # Convert AudioChunkEvent to AudioChunk for avatar
+                audio_chunk = AudioChunk(
+                    data=event.data,
+                    timestamp_ms=event.timestamp_ms,
+                    duration_ms=event.duration_ms,
+                    encoding=event.encoding,
+                    sample_rate=event.sample_rate,
+                )
+
+                ctx = {**session.context, "frame_counter": frame_counter}
+                async for frame in self.avatar.infer_stream(audio_chunk, resolved, ctx):
+                    drift = session.drift_controller.update(
+                        event.timestamp_ms, frame.timestamp_ms
+                    )
                     await output_q.put(
-                        AudioChunkEvent(
-                            data=chunk.data,
-                            timestamp_ms=chunk.timestamp_ms,
-                            duration_ms=chunk.duration_ms,
-                            encoding=chunk.encoding,
-                            sample_rate=chunk.sample_rate,
+                        VideoFrameEvent(
+                            data=frame.data,
+                            timestamp_ms=frame.timestamp_ms,
+                            frame_index=frame.frame_index,
+                            width=frame.width,
+                            height=frame.height,
+                            content_type=frame.content_type,
+                            drift_ms=drift,
                         )
                     )
-                    session.transition("AVATAR_RUN")
-                    ctx = {**session.context, "frame_counter": frame_counter}
-                    async for frame in self.avatar.infer_stream(chunk, resolved, ctx):
-                        drift = session.drift_controller.update(
-                            chunk.timestamp_ms, frame.timestamp_ms
-                        )
-                        await output_q.put(
-                            VideoFrameEvent(
-                                data=frame.data,
-                                timestamp_ms=frame.timestamp_ms,
-                                frame_index=frame.frame_index,
-                                width=frame.width,
-                                height=frame.height,
-                                content_type=frame.content_type,
-                                drift_ms=drift,
-                            )
-                        )
-                        frame_counter += 1
-
-        # Run LLM and TTS+Avatar in parallel — TTS starts as soon as first sentence ready
-        await asyncio.gather(llm_producer(), tts_avatar_consumer())
+                    frame_counter += 1
 
         # Track assistant response in history
         if full_response:
             session.append_history("assistant", "".join(full_response))
 
         session.transition("TURN_COMPLETE")
-        await output_q.put(TurnCompleteEvent(turn_id=turn_id))
+        # TurnCompleteEvent is yielded by stream_events(), so we don't send it again

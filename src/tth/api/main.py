@@ -6,13 +6,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from tth.core.config import settings
 from tth.core.logging import configure_logging, get_logger
+from tth.control.mapper import build_llm_system_prompt, map_emotion_to_realtime_voice
+from tth.core.types import TurnControl
+from tth.control.personas import get_persona_defaults, get_persona_name
 import tth.core.registry as registry
 
 # Import adapters to trigger @register decorators
-import tth.adapters.llm.openai_api  # noqa: F401
-import tth.adapters.llm.mock_llm  # noqa: F401
-import tth.adapters.tts.openai_tts  # noqa: F401
-import tth.adapters.tts.mock_tts  # noqa: F401
+import tth.adapters.realtime.openai_realtime  # noqa: F401
 import tth.adapters.avatar.stub  # noqa: F401
 
 from tth.pipeline.session import SessionManager
@@ -28,28 +28,42 @@ async def lifespan(app: FastAPI):
     log.info("tth starting", profile=settings.profile)
 
     # Instantiate adapters from config
-    llm_cfg = settings.components.get("llm", {})
-    tts_cfg = settings.components.get("tts", {})
+    realtime_cfg = settings.components.get("realtime", {})
     avatar_cfg = settings.components.get("avatar", {})
 
-    llm_adapter = registry.create(llm_cfg.get("primary", "openai_chat"), llm_cfg)
-    tts_adapter = registry.create(tts_cfg.get("primary", "openai_tts"), tts_cfg)
+    realtime_adapter = registry.create(
+        realtime_cfg.get("primary", "openai_realtime"), realtime_cfg
+    )
     avatar_adapter = registry.create(avatar_cfg.get("primary", "stub_avatar"), avatar_cfg)
 
     # Load adapters
-    await llm_adapter.load()
-    await tts_adapter.load()
+    await realtime_adapter.load()
     await avatar_adapter.load()
 
     log.info(
         "adapters loaded",
-        llm=llm_cfg.get("primary"),
-        tts=tts_cfg.get("primary"),
-        avatar=avatar_cfg.get("primary"),
+        realtime=realtime_cfg.get("primary", "openai_realtime"),
+        avatar=avatar_cfg.get("primary", "stub_avatar"),
     )
 
+    # Get persona defaults for initial connection
+    persona_id = "default"
+    persona_defaults = get_persona_defaults(persona_id)
+    persona_name = get_persona_name(persona_id)
+
+    # Build system instructions and voice for Realtime API
+    system_instructions = build_llm_system_prompt(
+        TurnControl(emotion=persona_defaults.emotion, character=persona_defaults.character),
+        persona_name=persona_name,
+    )
+    voice = map_emotion_to_realtime_voice(persona_defaults.emotion)
+
+    # Connect to Realtime API once at startup
+    await realtime_adapter.connect(system_instructions, voice)
+    log.info("Realtime API connected", voice=voice)
+
     # Wire up orchestrator + session manager
-    orch = Orchestrator(llm=llm_adapter, tts=tts_adapter, avatar=avatar_adapter)
+    orch = Orchestrator(realtime=realtime_adapter, avatar=avatar_adapter)
     sm = SessionManager()
 
     set_orchestrator(orch)
@@ -58,7 +72,9 @@ async def lifespan(app: FastAPI):
     log.info("tth ready", host=settings.app.host, port=settings.app.port)
     yield
 
+    # Cleanup
     log.info("tth shutting down")
+    await realtime_adapter.close()
 
 
 app = FastAPI(

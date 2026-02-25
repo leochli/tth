@@ -1,6 +1,6 @@
 # src/tth/api/schemas.py
 from __future__ import annotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from tth.core.types import (
     AdapterCapabilities,
     EmotionControl,

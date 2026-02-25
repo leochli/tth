@@ -120,7 +120,10 @@ async def session_stream(ws: WebSocket, session_id: str):
                     session.current_turn_task = asyncio.create_task(_run())
 
                 elif isinstance(evt, InterruptEvent):
+                    # Cancel the turn task
                     await session.cancel_current_turn()
+                    # Also cancel the Realtime API response
+                    await orch.realtime.cancel_response()
 
                 elif isinstance(evt, ControlUpdateEvent):
                     # Stored; will be merged into the control of the next UserTextEvent
@@ -147,8 +150,8 @@ async def session_stream(ws: WebSocket, session_id: str):
 async def health():
     orch = get_orchestrator()
     return HealthResponse(
-        llm=await orch.llm.health(),
-        tts=await orch.tts.health(),
+        llm=await orch.realtime.health(),  # Realtime serves as combined LLM+TTS
+        tts=await orch.realtime.health(),
         avatar=await orch.avatar.health(),
     )
 
@@ -157,8 +160,8 @@ async def health():
 async def models():
     orch = get_orchestrator()
     return ModelsResponse(
-        llm=orch.llm.capabilities(),
-        tts=orch.tts.capabilities(),
+        llm=orch.realtime.capabilities(),  # Realtime serves as combined LLM+TTS
+        tts=orch.realtime.capabilities(),
         avatar=orch.avatar.capabilities(),
     )
 
