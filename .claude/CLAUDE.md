@@ -1,3 +1,62 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+TTH (Text-to-Human) is a real-time text-to-human video synthesis system with emotion and character controllability. It uses an API-first architecture with pluggable adapters that let you swap between external APIs and self-hosted models via configuration—no code changes required.
+
+## Development Commands
+
+```bash
+make install    # Install dependencies (requires uv package manager)
+make dev        # Start development server at http://localhost:8000
+make test       # Run unit tests (pytest)
+make lint       # Run linter (ruff check + mypy)
+make fmt        # Format code (ruff format)
+make demo       # Run CLI demo client
+make phase      # Run offline integration tests
+make phase-live # Run tests with live API calls
+```
+
+## Architecture
+
+```
+src/tth/
+├── core/          # Types (types.py), config (config.py), registry (registry.py)
+├── adapters/      # Provider implementations: llm/, tts/, avatar/
+├── control/       # Emotion/character mapping (mapper.py, personas.py)
+├── pipeline/      # Orchestrator + session management
+├── alignment/     # A/V synchronization (drift.py)
+└── api/           # FastAPI app (main.py), routes (routes.py), schemas
+```
+
+**Data flow**: UserText → LLM (streaming tokens) → sentence buffer → TTS (audio chunks) → Avatar (video frames) → WebSocket client
+
+### Key Patterns
+
+**Adapter Registry**: Adapters are registered via `@register("name")` decorator and instantiated via `registry.create()`. This enables config-only provider switching. All adapters inherit from `AdapterBase` and implement `infer_stream()`, `health()`, and `capabilities()`.
+
+**Control System**: `TurnControl` contains `EmotionControl` (label, intensity, valence, arousal) and `CharacterControl` (speech_rate, pitch_shift, expressivity, motion_gain). Controls are resolved via `control/mapper.py` which maps generic controls to provider-specific parameters (e.g., OpenAI voice selection, speech rate modulation).
+
+**Orchestrator Pipeline** (`pipeline/orchestrator.py`): Uses bounded async queues to pipeline LLM → TTS → Avatar. LLM produces sentences; TTS starts as soon as the first sentence is ready. This reduces latency vs sequential execution.
+
+**WebSocket Protocol**: See `core/types.py` for event schemas. Inbound: `user_text`, `interrupt`, `control_update`. Outbound: `text_delta`, `audio_chunk`, `video_frame`, `turn_complete`, `error`. Audio/video data is base64-encoded in JSON transport.
+
+### Configuration
+
+- `config/base.yaml` — Default configuration with OpenAI LLM/TTS and stub avatar
+- `config/profiles/*.yaml` — Profile-specific overrides (merged via deep_merge)
+- Environment variables: `OPENAI_API_KEY` (required), `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY`, etc.
+- Profile selection: Set `TTH_PROFILE=profile_name` or edit `profile` in settings
+
+### Adding New Adapters
+
+1. Create adapter class inheriting from `AdapterBase` in appropriate `adapters/{llm,tts,avatar}/` subdirectory
+2. Decorate with `@register("provider_name")`
+3. Implement `infer_stream()` as async generator yielding appropriate types (str for LLM, AudioChunk for TTS, VideoFrame for avatar)
+4. Add config entry in `config/base.yaml` or profile YAML
+
 ## Workflow Orchestration
 
 1. Plan Mode Default
