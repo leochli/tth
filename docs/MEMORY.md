@@ -37,3 +37,20 @@
 1. Do not hardcode API keys in source.
 2. Keep secrets only in `.env` (local) or environment variables in deployment.
 3. If a key is ever pasted in chat/plaintext, rotate/revoke it.
+
+## Audio Streaming in Browsers
+
+### MP3 is NOT suitable for low-latency streaming
+- MP3 has frame headers (~417 bytes per frame at 128kbps)
+- Arbitrary byte boundaries break frames
+- Browsers cannot decode partial MP3 chunks reliably
+
+### Use PCM for streaming audio
+- Raw uncompressed audio - no frame boundaries
+- OpenAI TTS supports `response_format: "pcm"` (24kHz, 16-bit, mono)
+- Trade-off: ~3x larger than MP3, but acceptable for voice
+
+### Implementation pattern
+1. Server: Use PCM format, pass encoding/sample_rate through pipeline
+2. Client: Convert Int16 PCM to Float32, schedule with nextStartTime
+3. Use scheduled playback to avoid gaps between chunks
