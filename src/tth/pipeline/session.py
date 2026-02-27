@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from typing import Any
 from tth.alignment.drift import DriftController
-from tth.core.types import TurnControl
+from tth.core.types import EmotionControl, CharacterControl, TurnControl
 from tth.control.personas import get_persona_defaults, get_persona_name
 
 
@@ -38,7 +38,7 @@ class Session:
             "persona_name": persona_name,
         }
         self.pending_control: TurnControl | None = None
-        self.current_turn_task: asyncio.Task | None = None
+        self.current_turn_task: asyncio.Task[None] | None = None
         self.drift_controller = DriftController()
         self._state: str = "IDLE"
 
@@ -77,8 +77,8 @@ class SessionManager:
     def create(
         self,
         persona_id: str = "default",
-        emotion: Any = None,
-        character: Any = None,
+        emotion: EmotionControl | None = None,
+        character: CharacterControl | None = None,
     ) -> Session:
         session_id = str(uuid.uuid4())
         persona_defaults = get_persona_defaults(persona_id)
