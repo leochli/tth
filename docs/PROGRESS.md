@@ -7,11 +7,12 @@
 | Core Types | Complete | All Pydantic models defined |
 | Config System | Complete | YAML + env loading |
 | Adapter Registry | Complete | Decorator-based registration |
-| LLM Adapter (OpenAI) | Complete | Streaming chat completions |
-| TTS Adapter (OpenAI) | Complete | Streaming MP3 |
+| Realtime Adapter (OpenAI) | Complete | Combined LLM+TTS via WebSocket |
+| LLM Adapter (OpenAI) | Complete | Streaming chat completions (legacy) |
+| TTS Adapter (OpenAI) | Complete | Streaming PCM (legacy) |
 | Avatar Stub | Complete | Placeholder frames |
 | Control Mapper | Complete | Emotion + character mapping |
-| Orchestrator | Complete | Pipelined sentence streaming |
+| Orchestrator | Complete | Realtime→Avatar pipeline |
 | Session State | Complete | State machine + drift control |
 | API Endpoints | Complete | REST + WebSocket |
 | Phase Tests | Complete | Unit, offline, live tests |
@@ -23,7 +24,7 @@
 - [x] Core types and events
 - [x] Config system with profile support
 - [x] OpenAI LLM adapter (streaming)
-- [x] OpenAI TTS adapter (streaming MP3)
+- [x] OpenAI TTS adapter (streaming PCM)
 - [x] Avatar stub adapter
 - [x] Control mapping (emotion → provider params)
 - [x] Pipeline orchestrator with sentence streaming
@@ -35,6 +36,15 @@
 - [x] Interactive test script with playable output
 - [x] Interactive demo script
 
+### Realtime API Integration
+- [x] OpenAI Realtime API adapter (`adapters/realtime/openai_realtime.py`)
+- [x] Combined LLM+TTS via single WebSocket connection
+- [x] PCM audio streaming (24kHz, 16-bit, mono)
+- [x] Reduced latency (no sentence buffering needed)
+- [x] Session-scoped connection lifecycle
+- [x] Interrupt handling via `response.cancel`
+- [x] Updated orchestrator to use Realtime→Avatar pipeline
+
 ## Acceptance Criteria
 
 - [x] `make dev` starts server
@@ -42,10 +52,11 @@
 - [x] Turn cancellation works
 - [x] `duration_ms > 0` on all audio chunks
 - [x] `content_type` set on all video frames
-- [x] Emotion affects TTS voice/speed
+- [x] Emotion affects voice selection
 - [x] Config-driven adapter switching
 - [x] A/V drift tracked per session
 - [x] `/v1/health` and `/v1/models` endpoints
+- [x] Realtime API integration for reduced latency
 
 ## Testing Commands
 
@@ -71,5 +82,6 @@ make demo-interactive
 - [ ] Self-hosted LLM adapter (Ollama, vLLM)
 - [ ] Self-hosted TTS adapter (CosyVoice, F5-TTS)
 - [ ] Real avatar adapter (video synthesis)
+- [ ] Self-hosted Realtime adapter (local LLM+TTS)
 - [ ] Training infrastructure
 - [ ] GPU deployment config

@@ -28,8 +28,9 @@ make demo-interactive                 # Interactive demo (requires running serve
 |------|-------|
 | Core types | `src/tth/core/types.py` |
 | Config | `src/tth/core/config.py`, `config/base.yaml` |
-| LLM adapter | `src/tth/adapters/llm/openai_api.py` |
-| TTS adapter | `src/tth/adapters/tts/openai_tts.py` |
+| Realtime adapter | `src/tth/adapters/realtime/openai_realtime.py` |
+| LLM adapter (legacy) | `src/tth/adapters/llm/openai_api.py` |
+| TTS adapter (legacy) | `src/tth/adapters/tts/openai_tts.py` |
 | Avatar stub | `src/tth/adapters/avatar/stub.py` |
 | Control mapping | `src/tth/control/mapper.py` |
 | Orchestrator | `src/tth/pipeline/orchestrator.py` |
@@ -41,9 +42,9 @@ make demo-interactive                 # Interactive demo (requires running serve
 
 ## Key Patterns
 
-### Add new adapter
+### Add new streaming adapter (Avatar, LLM, TTS)
 ```python
-# src/tth/adapters/tts/new_provider.py
+# src/tth/adapters/avatar/new_provider.py
 from tth.adapters.base import AdapterBase
 from tth.core.registry import register
 
@@ -57,6 +58,34 @@ class NewProviderAdapter(AdapterBase):
         return HealthStatus(healthy=True)
 ```
 
+### Add new realtime adapter (Combined LLM+TTS)
+```python
+# src/tth/adapters/realtime/my_realtime.py
+from tth.core.registry import register
+
+@register("my_realtime")
+class MyRealtimeAdapter(AdapterBase):
+    async def connect(self, system_instructions: str, voice: str) -> None:
+        """Establish connection ONCE at session start."""
+        ...
+
+    async def send_user_text(self, text: str) -> None:
+        """Send user message and trigger response."""
+        ...
+
+    async def stream_events(self) -> AsyncIterator[...]:
+        """Yield events until TurnCompleteEvent."""
+        ...
+
+    async def cancel_response(self) -> None:
+        """Cancel current response."""
+        ...
+
+    async def close(self) -> None:
+        """Close connection."""
+        ...
+```
+
 ### Add new emotion mapping
 ```python
 # src/tth/control/mapper.py
@@ -68,7 +97,7 @@ def map_emotion_to_new_provider(emotion, character) -> dict:
 ```yaml
 # config/profiles/api_only_mac.yaml
 components:
-  tts:
+  avatar:
     primary: new_provider
 ```
 
@@ -80,15 +109,23 @@ components:
 | In | `interrupt` | Cancel current turn |
 | In | `control_update` | Update control for next turn |
 | Out | `text_delta` | LLM token |
-| Out | `audio_chunk` | MP3 bytes (base64 in JSON) |
+| Out | `audio_chunk` | PCM bytes (base64 in JSON) |
 | Out | `video_frame` | Frame bytes (base64 in JSON) |
 | Out | `turn_complete` | Turn finished |
 | Out | `error` | Error occurred |
 
+## Realtime API Notes
+
+- **Connection**: Established once at session start via `connect()`
+- **Audio Format**: PCM, 24kHz, 16-bit, mono
+- **Latency**: Lower than separate LLM→TTS pipeline (no sentence buffering)
+- **Interrupt**: Use `cancel_response()` to stop generation
+- **Voice Selection**: Controlled via `EmotionControl.label`
+
 ## Environment Variables
 
 ```bash
-OPENAI_API_KEY=sk-...       # Required for v1
+OPENAI_API_KEY=sk-...       # Required for Realtime API
 TTH_PROFILE=api_only_mac    # Config profile
 ```
 
@@ -99,7 +136,7 @@ TTH_PROFILE=api_only_mac    # Config profile
 - [x] Turn cancellation works
 - [x] `duration_ms > 0` on all audio chunks
 - [x] `content_type` set on all video frames
-- [x] Emotion affects TTS voice/speed
+- [x] Emotion affects voice selection
 - [x] Config-driven adapter switching
 - [x] A/V drift tracked per session
 - [x] `/v1/health` and `/v1/models` endpoints

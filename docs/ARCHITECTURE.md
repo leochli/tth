@@ -24,9 +24,7 @@ TTH is a real-time text-to-human video system with emotion and character control
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        ORCHESTRATOR (async)                              │
 │                                                                          │
-│  UserText ──► [LLM Stage] ──► [Control Merge] ──► [TTS Stage]           │
-│                                                         │                │
-│                                                    AudioChunks           │
+│  UserText ──► [Realtime API (LLM+TTS combined)] ──► Text + Audio        │
 │                                                         │                │
 │                                                         ▼                │
 │                                               [Avatar Stage]             │
@@ -40,6 +38,8 @@ TTH is a real-time text-to-human video system with emotion and character control
                             CLIENT STREAM
 ```
 
+**Key Change**: The system now uses OpenAI's Realtime API which combines LLM and TTS into a single WebSocket connection, significantly reducing latency compared to the previous LLM → TTS pipeline.
+
 ## Project Structure
 
 ```
@@ -50,7 +50,7 @@ tth/
 ├── .env.example             # Template for environment variables
 │
 ├── config/
-│   ├── base.yaml            # Default configuration (OpenAI + stub avatar)
+│   ├── base.yaml            # Default configuration (OpenAI Realtime + stub avatar)
 │   └── profiles/
 │       ├── api_only_mac.yaml    # v1: API-only profile (default)
 │       └── offline_mock.yaml    # Testing: Mock adapters (no API calls)
@@ -66,11 +66,13 @@ tth/
 │   │
 │   ├── adapters/            # Provider implementations
 │   │   ├── base.py          # AdapterBase ABC: load/warmup/infer_stream/health
+│   │   ├── realtime/        # Combined LLM+TTS adapters
+│   │   │   └── openai_realtime.py  # OpenAI Realtime API (WebSocket)
 │   │   ├── llm/
 │   │   │   ├── openai_api.py    # OpenAI Chat Completions (streaming)
 │   │   │   └── mock_llm.py      # Deterministic mock for offline testing
 │   │   ├── tts/
-│   │   │   ├── openai_tts.py    # OpenAI TTS (streaming MP3)
+│   │   │   ├── openai_tts.py    # OpenAI TTS (streaming PCM)
 │   │   │   └── mock_tts.py      # Pseudo-audio mock for offline testing
 │   │   └── avatar/
 │   │       └── stub.py          # Placeholder frames (content_type="raw_rgb")
@@ -107,7 +109,10 @@ tth/
 │   └── interactive_demo.py  # Interactive demo with playable output
 │
 └── docs/                    # Documentation
-    └── ARCHITECTURE.md      # This file
+    ├── ARCHITECTURE.md      # This file
+    ├── ADAPTERS.md          # Adapter documentation
+    ├── REALTIME_API.md      # Realtime API integration guide
+    └── MEMORY.md            # Operational notes
 ```
 
 ## Core Components
@@ -134,27 +139,23 @@ Pydantic Settings with YAML + environment variable merging:
 ```yaml
 # config/base.yaml
 components:
-  llm:
-    primary: openai_chat
-    model: gpt-4o-mini
-  tts:
-    primary: openai_tts
-    model: tts-1
+  realtime:
+    primary: openai_realtime
+    model: gpt-4o-realtime-preview
   avatar:
     primary: stub_avatar
 ```
 
 API keys are loaded from environment only (never in YAML):
-- `OPENAI_API_KEY` (required for v1)
-- `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, etc. (optional)
+- `OPENAI_API_KEY` (required for Realtime API)
 
 ### 3. Adapter Registry (`src/tth/core/registry.py`)
 
 Simple decorator-based registry for swapping providers:
 
 ```python
-@register("openai_chat")
-class OpenAIChatAdapter(AdapterBase): ...
+@register("openai_realtime")
+class OpenAIRealtimeAdapter(AdapterBase): ...
 
 @register("elevenlabs")
 class ElevenLabsTTSAdapter(AdapterBase): ...
@@ -176,17 +177,16 @@ class AdapterBase(ABC):
     def capabilities(self) -> AdapterCapabilities: ...
 ```
 
+**Note**: Realtime adapters have a different lifecycle (session-scoped WebSocket) and don't use `infer_stream()` directly.
+
 ### 5. Control Mapper (`src/tth/control/mapper.py`)
 
 Maps unified `TurnControl` to provider-specific parameters:
 
 ```python
-# OpenAI TTS: emotion → voice selection + speed
-def map_emotion_to_openai_tts(emotion, character) -> dict:
-    return {
-        "voice": VOICE_MAP[emotion.label],
-        "speed": character.speech_rate * (1 + emotion.arousal * 0.15),
-    }
+# Realtime API: emotion → voice selection
+def map_emotion_to_realtime_voice(emotion, character) -> str:
+    return VOICE_MAP[emotion.label]
 
 # LLM: emotion + character → system prompt injection
 def build_llm_system_prompt(control, persona_name) -> str: ...
@@ -194,27 +194,27 @@ def build_llm_system_prompt(control, persona_name) -> str: ...
 
 ### 6. Orchestrator (`src/tth/pipeline/orchestrator.py`)
 
-Async turn engine with pipelined sentence streaming for low TTFA:
+Simplified orchestrator using the Realtime API:
 
 ```
-LLM Producer                    TTS+Avatar Consumer
+Realtime API                    Avatar Stage
     │                                │
-    │  sentence_q (bounded=2)        │
+    │  text_delta + audio_chunk      │
     ├──────────────────────────────► │
     │                                │
-    │  First sentence → TTS starts   │
-    │  before LLM completes          │
+    │  Audio drives video generation │
+    │  No sentence buffering needed  │
 ```
 
 Key features:
-- Bounded queue prevents memory bloat
-- Sequential sentence processing (no audio interleaving)
-- Concurrent LLM + TTS/Avatar execution
+- Single WebSocket connection for LLM+TTS (lower latency)
+- Audio chunks drive avatar frame generation
+- Real-time text deltas for immediate display
 
 ### 7. Session State Machine (`src/tth/pipeline/session.py`)
 
 ```
-IDLE → LLM_RUN → CTRL_MERGE → TTS_RUN → AVATAR_RUN → STREAMING_OUTPUT → TURN_COMPLETE → IDLE
+IDLE → LLM_RUN → TTS_RUN → AVATAR_RUN → STREAMING_OUTPUT → TURN_COMPLETE → IDLE
           │                       │                │
           └─────── error ─────────┴────────────────┴──► TURN_ERROR
 ```
@@ -260,7 +260,7 @@ class DriftController:
 **Outbound events (server → client):**
 ```json
 {"type": "text_delta", "token": "Hello"}
-{"type": "audio_chunk", "data": "<base64>", "timestamp_ms": 1000, "duration_ms": 256}
+{"type": "audio_chunk", "data": "<base64>", "timestamp_ms": 1000, "duration_ms": 256, "encoding": "pcm", "sample_rate": 24000}
 {"type": "video_frame", "data": "<base64>", "frame_index": 0, "drift_ms": 5.0, ...}
 {"type": "turn_complete", "turn_id": "uuid"}
 {"type": "error", "code": "turn_error", "message": "..."}
@@ -304,28 +304,25 @@ make demo
 ```yaml
 # config/base.yaml
 components:
-  llm:
-    primary: openai_chat
-    model: gpt-4o-mini
-  tts:
-    primary: openai_tts
-    model: tts-1
+  realtime:
+    primary: openai_realtime
+    model: gpt-4o-realtime-preview
   avatar:
     primary: stub_avatar
 ```
 
 ### Switching Providers
 
-To switch TTS to ElevenLabs:
+To switch to a different avatar provider:
 ```yaml
 # config/profiles/api_only_mac.yaml
 components:
-  tts:
-    primary: elevenlabs
+  avatar:
+    primary: heygen          # requires HEYGEN_API_KEY + avatar_id
 ```
 ```bash
 # .env
-ELEVENLABS_API_KEY=...
+HEYGEN_API_KEY=...
 ```
 
 No code changes required.
@@ -334,14 +331,12 @@ No code changes required.
 
 | Component | Model | Cost |
 |-----------|-------|------|
-| LLM | gpt-4o-mini | ~$0.15/1M input tokens |
-| TTS | tts-1 | $0.015/1000 chars |
+| Realtime (LLM+TTS) | gpt-4o-realtime-preview | ~$0.06/min audio output |
 | Avatar | stub | $0 |
 
-Typical demo session (~5 turns, ~150 chars each):
-- LLM: ~$0.001
-- TTS: ~$0.01
-- **Total: ~$0.01 per conversation**
+Typical demo session (~5 turns, ~30 seconds audio):
+- Realtime API: ~$0.03
+- **Total: ~$0.03 per conversation**
 
 ## Future Extensions (v2)
 
