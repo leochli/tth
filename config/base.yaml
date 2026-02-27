@@ -3,22 +3,21 @@ app:
   port: 8000
   log_level: "info"
 
+# Component configuration
+# The system uses OpenAI's Realtime API which combines LLM+TTS in a single connection.
+# For offline testing, use the 'offline_mock' profile which uses separate mock adapters.
 components:
-  llm:
+  realtime:
     mode: api
-    primary: openai_chat     # → adapters/llm/openai_api.py
-    model: gpt-4o-mini       # cheapest capable model
-    fallback: []
-  tts:
-    mode: api
-    primary: openai_tts      # → adapters/tts/openai_tts.py  (reuses OPENAI_API_KEY)
-    model: tts-1             # cheapest; upgrade to tts-1-hd for quality
-    fallback: []
+    primary: openai_realtime     # → adapters/realtime/openai_realtime.py
+    model: gpt-4o-realtime-preview-2024-12-17
   avatar:
     mode: api
-    primary: stub_avatar     # → adapters/avatar/stub.py  (no API key needed)
+    primary: stub_avatar         # → adapters/avatar/stub.py (no API key needed)
     fallback: []
 
+# Persona definitions with emotion and character defaults
+# Each persona can be selected via persona_id when creating a session
 personas:
   default:
     name: "Assistant"
