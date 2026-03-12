@@ -45,6 +45,13 @@ class AdapterBase(ABC):
     ) -> list[Any]:
         return [chunk async for chunk in self.infer_stream(input, control, {})]
 
+    async def interrupt(self) -> None:
+        """Interrupt current inference and clear buffers. Optional.
+
+        Override in subclasses that support interruptible streaming.
+        Called when user sends InterruptEvent or new user_text arrives.
+        """
+
     @abstractmethod
     async def health(self) -> HealthStatus: ...
 
@@ -241,8 +248,129 @@ components:
 
 **Output Format**:
 - `content_type`: `"raw_rgb"`
-- Dimensions: 320x240 pixels
+- Dimensions: 256x256 pixels
 - Data: `width * height * 3` bytes per frame
+
+---
+
+### Mock Cloud Avatar (`mock_cloud_avatar`)
+
+Simulates cloud avatar service with configurable latency for development and CI testing.
+
+**Location**: `src/tth/adapters/avatar/mock_cloud.py`
+
+**Features**:
+- Simulates network + inference latency
+- No external API required
+- Generates JPEG frames
+- Supports interrupt handling
+
+**Configuration**:
+```yaml
+components:
+  avatar:
+    primary: mock_cloud_avatar
+    mock_cloud_avatar:
+      simulated_latency_ms: 150  # Network + inference latency
+      resolution: [512, 512]
+      fps: 25
+```
+
+**Output Format**:
+- `content_type`: `"jpeg"`
+- Dimensions: Configurable (default 512x512)
+
+---
+
+### LivePortrait Cloud (`liveportrait_cloud`)
+
+Real-time avatar generation via cloud GPU (Modal or RunPod).
+
+**Location**: `src/tth/adapters/avatar/liveportrait_cloud.py`
+
+**Features**:
+- WebSocket streaming for low-latency communication
+- Audio resampling (24kHz → 16kHz) for LivePortrait
+- Automatic reconnection with session resume
+- Interrupt support for real-time interaction
+- Emotion/expression mapping
+
+**Configuration**:
+```yaml
+components:
+  avatar:
+    primary: liveportrait_cloud
+    liveportrait_cloud:
+      endpoint_url: "https://your-name--liveportrait-avatar.modal.run"
+      api_key_env: "MODAL_API_KEY"
+      timeout_ms: 5000
+      resolution: [512, 512]
+      fps: 25
+      default_avatar: "default_avatar_01"
+      min_chunk_ms: 200  # Audio buffer size (200-500ms for lip sync)
+```
+
+**API Key**: `MODAL_API_KEY` (or custom via `api_key_env`)
+
+**Audio Pipeline**:
+1. AudioChunk from Realtime API (24kHz PCM)
+2. Buffered until `min_chunk_ms` accumulated
+3. Resampled to 16kHz for LivePortrait
+4. Sent to cloud via WebSocket
+5. JPEG frames received and yielded
+
+**WebSocket Protocol**:
+
+| Direction | Message Type | Fields |
+|-----------|--------------|--------|
+| TTH → Cloud | `session_init` | `session_id`, `avatar_id`, `emotion_config` |
+| TTH → Cloud | `audio_chunk` | `session_id`, `data` (base64), `timestamp_ms`, `emotion` |
+| TTH → Cloud | `interrupt` | `session_id` |
+| TTH → Cloud | `session_end` | `session_id` |
+| Cloud → TTH | `video_frame` | `data` (base64 JPEG), `timestamp_ms`, `frame_index` |
+| Cloud → TTH | `session_ready` | `session_id`, `avatar_id` |
+| Cloud → TTH | `error` | `code`, `message` |
+
+**Deployment**:
+```bash
+# Deploy to Modal
+modal deploy deployment/modal/avatar_service/app.py
+```
+
+---
+
+### Cloud Avatar Base Class
+
+Base class for implementing custom cloud avatar adapters.
+
+**Location**: `src/tth/adapters/avatar/cloud_base.py`
+
+**Features**:
+- WebSocket connection management with retries
+- Automatic reconnection with exponential backoff
+- Health monitoring (stale connection detection)
+- Frame queue with backpressure handling
+- Interrupt support
+- Fallback to stub adapter on failure
+
+**To implement a custom cloud adapter**:
+```python
+from tth.adapters.avatar.cloud_base import CloudAvatarAdapterBase
+from tth.core.registry import register
+
+@register("my_cloud_avatar")
+class MyCloudAvatarAdapter(CloudAvatarAdapterBase):
+    def _get_auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {os.environ.get('MY_API_KEY')}"}
+
+    async def load(self) -> None:
+        # Validate endpoint, preload assets
+        ...
+
+    async def infer_stream(self, input, control, context):
+        # Use inherited _connect(), _send_session_init(), _send_audio_chunk()
+        ...
+```
 
 ---
 

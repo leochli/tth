@@ -1,3 +1,5 @@
+# Offline mock profile for development and CI testing
+# Uses mock adapters without external API dependencies
 components:
   llm:
     mode: api
@@ -11,5 +13,9 @@ components:
     fallback: []
   avatar:
     mode: api
-    primary: stub_avatar
-    fallback: []
+    primary: mock_cloud_avatar  # Simulates cloud avatar with configurable latency
+    fallback: [stub_avatar]
+    mock_cloud_avatar:
+      simulated_latency_ms: 150
+      resolution: [512, 512]
+      fps: 25

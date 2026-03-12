@@ -31,11 +31,18 @@ make demo-interactive                 # Interactive demo (requires running serve
 | Realtime adapter | `src/tth/adapters/realtime/openai_realtime.py` |
 | LLM adapter (legacy) | `src/tth/adapters/llm/openai_api.py` |
 | TTS adapter (legacy) | `src/tth/adapters/tts/openai_tts.py` |
-| Avatar stub | `src/tth/adapters/avatar/stub.py` |
+| Avatar adapters | `src/tth/adapters/avatar/` |
+| - Stub | `src/tth/adapters/avatar/stub.py` |
+| - Mock cloud | `src/tth/adapters/avatar/mock_cloud.py` |
+| - Cloud base | `src/tth/adapters/avatar/cloud_base.py` |
+| - LivePortrait | `src/tth/adapters/avatar/liveportrait_cloud.py` |
+| Audio utilities | `src/tth/adapters/avatar/audio_utils.py`, `buffer.py` |
 | Control mapping | `src/tth/control/mapper.py` |
 | Orchestrator | `src/tth/pipeline/orchestrator.py` |
 | Session | `src/tth/pipeline/session.py` |
 | API routes | `src/tth/api/routes.py` |
+| Client rendering | `client/avatar_renderer.js`, `client/av_sync.js` |
+| Modal deployment | `deployment/modal/avatar_service/app.py` |
 | Tests | `tests/`, `scripts/phase_*.py` |
 | Interactive test | `scripts/interactive_test.py` |
 | Interactive demo | `scripts/interactive_demo.py` |
@@ -54,8 +61,31 @@ class NewProviderAdapter(AdapterBase):
         # Yield AudioChunk or VideoFrame or str
         yield chunk
 
+    async def interrupt(self):
+        # Optional: Clear buffers on interrupt
+        ...
+
     async def health(self):
         return HealthStatus(healthy=True)
+```
+
+### Add new cloud avatar adapter
+```python
+# src/tth/adapters/avatar/my_cloud.py
+from tth.adapters.avatar.cloud_base import CloudAvatarAdapterBase
+from tth.core.registry import register
+
+@register("my_cloud_avatar")
+class MyCloudAvatarAdapter(CloudAvatarAdapterBase):
+    def _get_auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {os.environ.get('MY_API_KEY')}"}
+
+    async def load(self) -> None:
+        # Validate endpoint, preload avatars
+        ...
+
+    # infer_stream() inherits from CloudAvatarAdapterBase
+    # Just implement auth and initialization
 ```
 
 ### Add new realtime adapter (Combined LLM+TTS)
@@ -126,7 +156,33 @@ components:
 
 ```bash
 OPENAI_API_KEY=sk-...       # Required for Realtime API
+MODAL_API_KEY=...           # For LivePortrait cloud avatar (optional)
 TTH_PROFILE=api_only_mac    # Config profile
+```
+
+## Avatar Profiles
+
+```yaml
+# Default: Stub adapter (no API)
+components:
+  avatar:
+    primary: stub_avatar
+
+# Development: Mock cloud with simulated latency
+# config/profiles/offline_mock.yaml
+components:
+  avatar:
+    primary: mock_cloud_avatar
+    mock_cloud_avatar:
+      simulated_latency_ms: 150
+
+# Production: LivePortrait on Modal
+components:
+  avatar:
+    primary: liveportrait_cloud
+    liveportrait_cloud:
+      endpoint_url: "https://your-name--liveportrait-avatar.modal.run"
+      min_chunk_ms: 200
 ```
 
 ## Acceptance Criteria
