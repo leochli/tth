@@ -14,6 +14,8 @@ import tth.core.registry as registry
 # Import adapters to trigger @register decorators
 import tth.adapters.realtime.openai_realtime  # noqa: F401
 import tth.adapters.avatar.stub  # noqa: F401
+import tth.adapters.avatar.mock_cloud  # noqa: F401
+import tth.adapters.avatar.did_streaming  # noqa: F401
 
 from tth.pipeline.session import SessionManager
 from tth.pipeline.orchestrator import Orchestrator

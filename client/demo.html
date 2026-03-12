@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTH Avatar Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    #container {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+    }
+    #avatar-container {
+      position: relative;
+    }
+    #avatar-canvas {
+      width: 512px;
+      height: 512px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      background: #2d2d44;
+    }
+    #controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 320px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 12px;
+      border: 1px solid #3d3d5c;
+      border-radius: 8px;
+      background: #2d2d44;
+      color: #fff;
+      font-size: 14px;
+      resize: none;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #6366f1;
+    }
+    .button-row {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #send {
+      background: #6366f1;
+      color: white;
+    }
+    #send:hover:not(:disabled) {
+      background: #4f46e5;
+    }
+    #interrupt {
+      background: #ef4444;
+      color: white;
+    }
+    #interrupt:hover:not(:disabled) {
+      background: #dc2626;
+    }
+    #connect {
+      background: #10b981;
+      color: white;
+    }
+    #connect:hover:not(:disabled) {
+      background: #059669;
+    }
+    #status {
+      color: #888;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 8px;
+      background: #2d2d44;
+      border-radius: 6px;
+    }
+    #metrics {
+      color: #888;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 8px;
+      background: #2d2d44;
+      border-radius: 6px;
+      line-height: 1.6;
+    }
+    .metric-label {
+      color: #6366f1;
+    }
+    #response-text {
+      width: 100%;
+      height: 80px;
+      padding: 12px;
+      border: 1px solid #3d3d5c;
+      border-radius: 8px;
+      background: #2d2d44;
+      color: #fff;
+      font-size: 14px;
+      overflow-y: auto;
+    }
+    label {
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="avatar-container">
+      <canvas id="avatar-canvas" width="512" height="512"></canvas>
+    </div>
+    <div id="controls">
+      <div id="status">Disconnected</div>
+      <div class="button-row">
+        <button id="connect">Connect</button>
+      </div>
+      <label for="input">Your Message</label>
+      <textarea id="input" placeholder="Type your message..."></textarea>
+      <div class="button-row">
+        <button id="send" disabled>Send</button>
+        <button id="interrupt" disabled>Interrupt</button>
+      </div>
+      <label for="response-text">Response</label>
+      <div id="response-text"></div>
+      <div id="metrics">
+        <div><span class="metric-label">Drift:</span> <span id="drift-value">--</span> ms</div>
+        <div><span class="metric-label">Avg Drift:</span> <span id="avg-drift-value">--</span> ms</div>
+        <div><span class="metric-label">Audio Latency:</span> <span id="latency-value">--</span> s</div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>
