@@ -190,6 +190,14 @@ class SimliAvatarAdapter(AdapterBase):
                     yield frame
                 return
 
+        # Drain any frames that arrived since the last call (Simli has inherent
+        # latency, so frames from previously-sent audio batches accumulate here).
+        while not self._pending_frames.empty():
+            try:
+                yield self._pending_frames.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
         # Buffer and resample audio (24kHz → 16kHz)
         ready, resampled = self._buffer.add(input)
         if not ready or resampled is None:
@@ -203,7 +211,19 @@ class SimliAvatarAdapter(AdapterBase):
             self._is_healthy = False
             return
 
-        # Yield any available frames (non-blocking)
+        # After sending audio, wait for the first frame that Simli generates
+        # in response.  Simli has 200-400 ms of latency, so a simple non-blocking
+        # drain misses all of these frames.  We block up to _FRAME_WAIT_S so the
+        # orchestrator doesn't move on before Simli has produced anything.
+        _FRAME_WAIT_S = 0.5
+        try:
+            frame = await asyncio.wait_for(self._pending_frames.get(), timeout=_FRAME_WAIT_S)
+            yield frame
+        except asyncio.TimeoutError:
+            logger.debug("Simli: no frame within %.0f ms after audio send", _FRAME_WAIT_S * 1000)
+            return
+
+        # Drain any additional frames that also arrived during the wait.
         while not self._pending_frames.empty():
             try:
                 yield self._pending_frames.get_nowait()

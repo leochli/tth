@@ -64,8 +64,7 @@ class OpenAIRealtimeAdapter(AdapterBase):
             session_update = {
                 "type": "session.update",
                 "session": {
-                    "type": "realtime",  # Required: realtime session for speech-to-speech
-                    "modalities": ["text", "audio"],
+                    "output_modalities": ["audio"],  # audio includes transcript by default
                     "instructions": system_instructions,
                     "voice": voice,
                     "input_audio_format": "pcm16",

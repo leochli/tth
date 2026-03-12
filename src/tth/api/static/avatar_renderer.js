@@ -64,7 +64,6 @@ export class AvatarRenderer {
    * Start render loop.
    */
   start() {
-    this.isRendering = true;
     console.log('AvatarRenderer: started');
   }
 
@@ -75,7 +74,7 @@ export class AvatarRenderer {
     this.isRendering = false;
   }
 
-  async _renderNextFrame() {
+  _renderNextFrame() {
     if (this.frameQueue.length === 0) {
       this.isRendering = false;
       return;
@@ -84,36 +83,22 @@ export class AvatarRenderer {
     this.isRendering = true;
     const frame = this.frameQueue.shift();
 
-    try {
-      // Decode base64 to bytes
-      const binaryString = atob(frame.data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+    const scheduleNext = () => requestAnimationFrame(() => this._renderNextFrame());
 
-      // Create blob and decode
-      const blob = new Blob([bytes], { type: 'image/jpeg' });
-      const bitmap = await createImageBitmap(blob);
-
-      // Draw to canvas
-      this.ctx.drawImage(bitmap, 0, 0, this.canvas.width, this.canvas.height);
-      bitmap.close();
-
-      // Update drift for metrics
+    const img = new Image();
+    img.onload = () => {
+      this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
       this.totalDrift = frame.drift_ms || 0;
       this.driftSamples.push(this.totalDrift);
-      if (this.driftSamples.length > 100) {
-        this.driftSamples.shift();
-      }
-
+      if (this.driftSamples.length > 100) this.driftSamples.shift();
       console.log('Rendered frame:', frame.frame_index);
-    } catch (e) {
+      scheduleNext();
+    };
+    img.onerror = (e) => {
       console.error('Frame render error:', e);
-    }
-
-    // Continue rendering
-    requestAnimationFrame(() => this._renderNextFrame());
+      scheduleNext();
+    };
+    img.src = 'data:image/jpeg;base64,' + frame.data;
   }
 
   /**
