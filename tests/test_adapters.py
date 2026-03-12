@@ -82,7 +82,7 @@ async def test_stub_avatar_frame_content_type():
         duration_ms=200.0,  # 200ms → 5 frames
     )
     async for frame in adapter.infer_stream(chunk, TurnControl(), {}):
-        assert frame.content_type == "raw_rgb"
+        assert frame.content_type == "jpeg"
         assert frame.width == 256
         assert frame.height == 256
 
