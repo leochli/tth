@@ -10,3 +10,6 @@ __pycache__/
 # Test output files
 output_*.gif
 output_*.mp3
+
+# Git worktrees
+.worktrees/
