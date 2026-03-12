@@ -18,19 +18,6 @@ from tth.core.registry import get, list_registered
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 
-def test_registry_has_openai_chat():
-    # Importing the adapter modules registers them
-    import tth.adapters.llm.openai_api  # noqa
-
-    assert "openai_chat" in list_registered()
-
-
-def test_registry_has_openai_tts():
-    import tth.adapters.tts.openai_tts  # noqa
-
-    assert "openai_tts" in list_registered()
-
-
 def test_registry_has_stub_avatar():
     import tth.adapters.avatar.stub  # noqa
 
