@@ -38,6 +38,14 @@ class AdapterBase(ABC):
     ) -> list[Any]:
         return [chunk async for chunk in self.infer_stream(input, control, {})]
 
+    async def interrupt(self) -> None:
+        """Interrupt current inference and clear buffers. Optional.
+
+        Override in subclasses that support interruptible streaming.
+        Called when user sends InterruptEvent or new user_text arrives.
+        """
+        pass  # Default: no-op for adapters that don't support interruption
+
     @abstractmethod
     async def health(self) -> HealthStatus: ...
 
