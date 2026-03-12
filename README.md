@@ -38,7 +38,7 @@ export SIMLI_API_KEY=...      # For Simli real-time avatars
 make dev
 ```
 
-Open **http://localhost:8000/static/demo.html** in your browser.
+Open **http://localhost:8000/demo.html** in your browser.
 
 1. Click **Connect** → establishes a WebSocket session
 2. Type a message and click **Send**

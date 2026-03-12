@@ -8,7 +8,7 @@ app:
 components:
   realtime:
     primary: openai_realtime     # → adapters/realtime/openai_realtime.py
-    model: gpt-4o-realtime-preview-2024-12-17
+    model: gpt-realtime
   avatar:
     primary: simli
     fallback: [stub_avatar]

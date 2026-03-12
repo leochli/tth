@@ -207,13 +207,17 @@ class TestDIDStreamingAvatar:
     @pytest.mark.asyncio
     async def test_did_streaming_no_api_key(self):
         """D-ID adapter should handle missing API key gracefully."""
+        import os
+        from unittest.mock import patch
         adapter = DIDStreamingAvatar({
             "resolution": [512, 512],
             "fps": 25,
         })
-        await adapter.load()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DID_API_KEY", None)
+            await adapter.load()
+            health = await adapter.health()
 
-        health = await adapter.health()
         assert health.healthy is False
         assert "DID_API_KEY" in health.detail
 

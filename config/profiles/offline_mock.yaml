@@ -1,0 +1,8 @@
+# Offline mock profile for development and CI testing.
+# Overrides the avatar adapter to stub_avatar so phase tests run without
+# hitting Simli's WebRTC API (no TURN servers, no rate limits).
+# The realtime component still uses openai_realtime (OPENAI_API_KEY required).
+components:
+  avatar:
+    primary: stub_avatar
+    fallback: []

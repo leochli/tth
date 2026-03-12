@@ -36,7 +36,6 @@ class OpenAIRealtimeAdapter(AdapterBase):
     """
 
     _WS_URL = "wss://api.openai.com/v1/realtime"
-    _MODEL = "gpt-realtime"  # GA model (was gpt-4o-realtime-preview in beta)
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         super().__init__(config or {})
@@ -52,7 +51,7 @@ class OpenAIRealtimeAdapter(AdapterBase):
             logger.warning("Realtime adapter already connected, skipping reconnect")
             return
 
-        url = f"{self._WS_URL}?model={self._MODEL}"
+        url = f"{self._WS_URL}?model={self.config.get('model', 'gpt-realtime')}"
 
         try:
             self._ws = await websockets.connect(

@@ -10,6 +10,7 @@ import time
 from typing import Any, AsyncIterator
 
 import websockets
+from websockets.connection import State as WsState
 
 from tth.adapters.avatar.buffer import AudioChunkBuffer
 from tth.adapters.base import AdapterBase
@@ -252,7 +253,7 @@ class CloudAvatarAdapterBase(AdapterBase):
                 break
 
         # Send interrupt to cloud if connected
-        if self._ws and self._ws.open and self._session_id:
+        if self._ws and self._ws.state is WsState.OPEN and self._session_id:
             try:
                 await self._ws.send(json.dumps({
                     "type": "interrupt",
@@ -300,7 +301,7 @@ class CloudAvatarAdapterBase(AdapterBase):
             except asyncio.CancelledError:
                 pass
 
-        if self._ws and self._ws.open:
+        if self._ws and self._ws.state is WsState.OPEN:
             # Send session end if we have an active session
             if self._session_id:
                 try:

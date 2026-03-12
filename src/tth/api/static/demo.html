@@ -133,17 +133,12 @@
 <body>
   <div id="container">
     <div id="avatar-container">
-      <!-- D-ID WebRTC uses video element -->
-      <video id="avatar-video" width="512" height="512" autoplay playsinline
-             style="display:none; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.3); background:#2d2d44;"></video>
-      <!-- Server-side frames use canvas -->
       <canvas id="avatar-canvas" width="512" height="512" style="display:none;"></canvas>
     </div>
     <div id="controls">
       <div id="status">Disconnected</div>
       <div class="button-row">
         <button id="connect">Connect</button>
-        <button id="connect-did" style="background:#8b5cf6;color:white;" onclick="console.log('Connect D-ID button clicked!')">Connect D-ID</button>
       </div>
       <label for="input">Your Message</label>
       <textarea id="input" placeholder="Type your message..."></textarea>
@@ -174,7 +169,7 @@
   </script>
   <script type="module">
     console.log('Module script starting...');
-    import './demo.js?v=4';
+    import './demo.js?v=5';
     console.log('Module import completed');
   </script>
 </body>

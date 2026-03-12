@@ -1,14 +1,12 @@
 /**
  * TTH Avatar Demo Client
  *
- * Supports two modes:
- * 1. Server-side frames: Video frames sent via WebSocket
- * 2. D-ID WebRTC: Browser connects directly to D-ID via WebRTC
+ * Server-side frame mode: video frames delivered via WebSocket VideoFrame events,
+ * rendered on canvas. Audio played via Web Audio API.
  */
 
 import { AvatarRenderer } from './avatar_renderer.js';
 import { AVSyncController, createAudioContext, decodeBase64PCM } from './av_sync.js';
-import { DIDWebRTCClient } from './did_webrtc.js';
 
 // Configuration
 const WS_URL = `ws://${window.location.host}/v1/sessions`;
@@ -19,7 +17,6 @@ class TTHDemoClient {
     console.log('TTHDemoClient constructor starting...');
     // DOM elements
     this.canvas = document.getElementById('avatar-canvas');
-    this.video = document.getElementById('avatar-video');
     this.inputEl = document.getElementById('input');
     this.responseTextEl = document.getElementById('response-text');
     this.statusEl = document.getElementById('status');
@@ -27,43 +24,24 @@ class TTHDemoClient {
     this.avgDriftEl = document.getElementById('avg-drift-value');
     this.latencyEl = document.getElementById('latency-value');
 
-    console.log('DOM elements:', {
-      canvas: !!this.canvas,
-      video: !!this.video,
-      statusEl: !!this.statusEl
-    });
-
-    // Verify required elements exist
-    if (!this.canvas || !this.video || !this.statusEl) {
+    if (!this.canvas || !this.statusEl) {
       throw new Error('Required DOM elements not found');
     }
 
     // Buttons
     this.connectBtn = document.getElementById('connect');
-    this.connectDIDBtn = document.getElementById('connect-did');
     this.sendBtn = document.getElementById('send');
     this.interruptBtn = document.getElementById('interrupt');
 
-    console.log('Buttons:', {
-      connectBtn: !!this.connectBtn,
-      connectDIDBtn: !!this.connectDIDBtn,
-      sendBtn: !!this.sendBtn,
-      interruptBtn: !!this.interruptBtn
-    });
-
-    // Audio/Video (for server-side mode)
+    // Audio/Video
     this.audioContext = createAudioContext();
     this.renderer = new AvatarRenderer(this.canvas, this.audioContext);
     this.avSync = new AVSyncController(this.audioContext, this.renderer);
-
-    // D-ID WebRTC client
-    this.didClient = null;
 
     // WebSocket
     this.ws = null;
     this.sessionId = null;
     this.isConnected = false;
-    this.mode = null; // 'server' or 'did'
 
     // State
     this.responseText = '';
@@ -73,13 +51,7 @@ class TTHDemoClient {
   }
 
   _setupEventListeners() {
-    // Connect button (server-side frames)
     this.connectBtn.addEventListener('click', () => this.connectServer());
-
-    // Connect D-ID button (WebRTC mode)
-    this.connectDIDBtn.addEventListener('click', () => this.connectDID());
-
-    // Send button
     this.sendBtn.addEventListener('click', () => this.send());
 
     // Interrupt button
@@ -96,13 +68,9 @@ class TTHDemoClient {
 
   async connectServer() {
     try {
-      this._setStatus('Connecting (server mode)...');
+      this._setStatus('Connecting...');
       this.connectBtn.disabled = true;
-      this.connectDIDBtn.disabled = true;
-
-      // Show canvas, hide video
       this.canvas.style.display = 'block';
-      this.video.style.display = 'none';
 
       // Create session
       const response = await fetch(API_URL, {
@@ -123,13 +91,10 @@ class TTHDemoClient {
 
       this.ws.onopen = () => {
         this.isConnected = true;
-        this.mode = 'server';
-        this._setStatus(`Connected (server mode: ${this.sessionId.slice(0, 8)}...)`);
+        this._setStatus(`Connected (${this.sessionId.slice(0, 8)}...)`);
         this.sendBtn.disabled = false;
         this.interruptBtn.disabled = false;
         this.renderer.start();
-
-        // Resume audio context on user interaction
         this.audioContext.resume();
       };
 
@@ -148,77 +113,15 @@ class TTHDemoClient {
       console.error('Connection error:', error);
       this._setStatus(`Error: ${error.message}`);
       this.connectBtn.disabled = false;
-      this.connectDIDBtn.disabled = false;
-    }
-  }
-
-  async connectDID() {
-    console.log('connectDID called');
-    try {
-      this._setStatus('Connecting (D-ID WebRTC)...');
-      this.connectBtn.disabled = true;
-      this.connectDIDBtn.disabled = true;
-
-      // Show video, hide canvas
-      this.video.style.display = 'block';
-      this.canvas.style.display = 'none';
-
-      // Create session
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ persona_id: 'default' }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create session: ${response.status}`);
-      }
-
-      const data = await response.json();
-      this.sessionId = data.session_id;
-
-      // Create D-ID WebRTC client
-      this.didClient = new DIDWebRTCClient(this.video, {
-        apiBase: '/v1/did/sessions',
-        onStatusChange: (status) => {
-          if (status === 'connected') {
-            this.isConnected = true;
-            this.mode = 'did';
-            this._setStatus(`Connected (D-ID: ${this.sessionId.slice(0, 8)}...)`);
-            this.sendBtn.disabled = false;
-            this.interruptBtn.disabled = false;
-          } else if (status === 'disconnected' || status === 'error') {
-            this._handleDisconnect();
-          }
-        },
-        onError: (error) => {
-          console.error('D-ID error:', error);
-          this._setStatus(`D-ID Error: ${error.message}`);
-        },
-      });
-
-      // Connect to D-ID
-      const success = await this.didClient.connect(this.sessionId);
-      if (!success) {
-        throw new Error('Failed to connect to D-ID');
-      }
-
-    } catch (error) {
-      console.error('D-ID connection error:', error);
-      this._setStatus(`Error: ${error.message}`);
-      this.connectBtn.disabled = false;
-      this.connectDIDBtn.disabled = false;
     }
   }
 
   _handleDisconnect() {
     this.isConnected = false;
-    this.mode = null;
     this._setStatus('Disconnected');
     this.sendBtn.disabled = true;
     this.interruptBtn.disabled = true;
     this.connectBtn.disabled = false;
-    this.connectDIDBtn.disabled = false;
   }
 
   send() {
@@ -229,24 +132,15 @@ class TTHDemoClient {
     this.responseText = '';
     this.responseTextEl.textContent = '';
 
-    if (this.mode === 'server') {
-      // Server mode: send via WebSocket
-      this.avSync.reset();
-
-      const message = {
-        type: 'user_text',
-        text: text,
-        control: {
-          emotion: { label: 'neutral', intensity: 0.5 },
-          character: { persona_id: 'default' },
-        },
-      };
-
-      this.ws.send(JSON.stringify(message));
-    } else if (this.mode === 'did') {
-      // D-ID mode: send text directly to D-ID
-      this.didClient.speak(text);
-    }
+    this.avSync.reset();
+    this.ws.send(JSON.stringify({
+      type: 'user_text',
+      text: text,
+      control: {
+        emotion: { label: 'neutral', intensity: 0.5 },
+        character: { persona_id: 'default' },
+      },
+    }));
 
     this.inputEl.value = '';
     this.sendBtn.disabled = true;
@@ -259,21 +153,12 @@ class TTHDemoClient {
 
   interrupt() {
     if (!this.isConnected) return;
-
-    if (this.mode === 'server') {
-      const message = { type: 'interrupt' };
-      this.ws.send(JSON.stringify(message));
-      this.avSync.reset();
-    }
-    // D-ID mode doesn't support interrupt via chat API
-
+    this.ws.send(JSON.stringify({ type: 'interrupt' }));
+    this.avSync.reset();
     this._setStatus('Interrupted');
   }
 
   _handleMessage(event) {
-    // Only handle messages in server mode
-    if (this.mode !== 'server') return;
-
     try {
       const data = JSON.parse(event.data);
       const type = data.type;
@@ -339,8 +224,7 @@ class TTHDemoClient {
 
   _startMetricsLoop() {
     const updateMetrics = () => {
-      // Update drift (only for server mode)
-      if (this.mode === 'server') {
+      if (this.isConnected) {
         this.driftEl.textContent = this.renderer.getDrift().toFixed(1);
         this.avgDriftEl.textContent = this.renderer.getAverageDrift().toFixed(1);
         this.latencyEl.textContent = this.avSync.getLatency().toFixed(2);
@@ -349,7 +233,6 @@ class TTHDemoClient {
         this.avgDriftEl.textContent = '--';
         this.latencyEl.textContent = '--';
       }
-
       requestAnimationFrame(updateMetrics);
     };
     updateMetrics();
@@ -362,8 +245,6 @@ function initClient() {
   try {
     window.client = new TTHDemoClient();
     console.log('Demo client ready');
-    console.log('Connect button:', window.client.connectBtn);
-    console.log('Connect D-ID button:', window.client.connectDIDBtn);
   } catch (error) {
     console.error('Failed to initialize demo client:', error);
     const statusEl = document.getElementById('status');
