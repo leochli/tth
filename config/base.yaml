@@ -13,9 +13,22 @@ components:
     model: gpt-4o-realtime-preview-2024-12-17
   avatar:
     mode: api
-    primary: did_streaming
+    primary: simli
     fallback: [stub_avatar]
     # Avatar adapter options:
+    #
+    # simli (primary — real-time lip-synced avatars)
+    #   - Accepts 16kHz PCM audio, returns JPEG frames over binary WebSocket
+    #   - <300ms latency; works with OpenAI Realtime API audio output
+    #   - Set SIMLI_API_KEY environment variable to enable
+    #   - Preset face IDs: https://docs.simli.com/api-reference/preset-faces
+    simli:
+      face_id: "5514e24d-6086-46a3-ace4-6a7264e5cb7c"
+      api_key_env: "SIMLI_API_KEY"
+      resolution: [512, 512]
+      fps: 25
+      min_chunk_ms: 100
+      target_sample_rate: 16000  # Resampled from 24kHz OpenAI Realtime output
     #
     # mock_cloud_avatar (RECOMMENDED for development)
     #   - Simulates cloud service with configurable latency
@@ -26,22 +39,12 @@ components:
       resolution: [512, 512]
       fps: 25
     #
-    # did_streaming (WebRTC to browser, not server-side frames)
+    # D-ID (legacy/optional — WebRTC to browser, not server-side frames)
     #   - D-ID Agents SDK for real-time WebRTC streaming
-    #   - Video delivered directly to browser via WebRTC
-    #   - Server cannot retrieve video frames
+    #   - Architecturally incompatible: D-ID runs its own TTS, so audio is out of sync
+    #     with OpenAI Realtime output (two independent audio clocks)
     #   - Set DID_API_KEY environment variable to enable
     # did_streaming:
-    #   resolution: [512, 512]
-    #   fps: 25
-    #
-    # did_cloud (text-to-video only, NOT real-time audio)
-    #   - D-ID talks API generates video from text
-    #   - Does NOT support real-time audio streaming
-    #   - For real-time, D-ID offers separate "Realtime" product (WebRTC-based)
-    # did_cloud:
-    #   presenter_id: "amy-jcCk9F4Z8Z9f5mVcY6bFf6"
-    #   driver_id: "amy-jcCk9F4Z8Z9F5mVcY6bFf6"
     #   resolution: [512, 512]
     #   fps: 25
     #

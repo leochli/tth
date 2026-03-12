@@ -339,6 +339,51 @@ modal deploy deployment/modal/avatar_service/app.py
 
 ---
 
+### Simli (`simli`)
+
+Real-time audio-to-avatar streaming via Simli's lip-sync model.
+
+**Location**: `src/tth/adapters/avatar/simli.py`
+
+**Pipeline fit**: Designed for OpenAI Realtime API — accepts raw PCM audio (resampled from 24kHz to 16kHz by `AudioChunkBuffer`) and returns JPEG frames over a binary WebSocket. No browser-side WebRTC relay needed; the server manages the Simli connection and sends `video_frame` events to the browser over the existing WebSocket.
+
+**Latency**: <300ms audio-to-video
+
+**Configuration**:
+```yaml
+components:
+  avatar:
+    primary: simli
+    simli:
+      face_id: "5514e24d-6086-46a3-ace4-6a7264e5cb7c"  # preset face UUID
+      api_key_env: "SIMLI_API_KEY"
+      resolution: [512, 512]
+      fps: 25
+      min_chunk_ms: 100
+      target_sample_rate: 16000
+```
+
+**API Key**: `SIMLI_API_KEY`. Preset face IDs: https://docs.simli.com/api-reference/preset-faces
+
+**Protocol**:
+
+| Direction | Transport | Format |
+|-----------|-----------|--------|
+| TTH → Simli (session init) | HTTP POST `/compose/token` | JSON — returns `session_token` |
+| TTH → Simli (audio) | WebSocket binary | Raw PCM Int16, 16kHz mono |
+| Simli → TTH (video) | WebSocket binary | JPEG bytes per frame |
+
+**WebSocket URL**: `wss://api.simli.ai/compose/webrtc/p2p?session_token=<token>`
+
+**Audio pipeline**:
+1. `AudioChunk` from Realtime API (24kHz PCM)
+2. Buffered until `min_chunk_ms` accumulated (default 100ms)
+3. Resampled to 16kHz by `AudioChunkBuffer`
+4. Sent as raw binary over Simli WebSocket
+5. Binary JPEG frames received by `_listen()` loop and enqueued
+
+---
+
 ### Cloud Avatar Base Class
 
 Base class for implementing custom cloud avatar adapters.

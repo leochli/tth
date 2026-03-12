@@ -5,11 +5,11 @@ Real-time text-to-human video synthesis with emotion and character controllabili
 ## Features
 
 - **Real-time streaming** — WebSocket-based bidirectional communication
-- **D-ID WebRTC avatars** — Live talking-head video via D-ID's Agents SDK, delivered directly to the browser via WebRTC
+- **Simli real-time avatars** — Lip-synced video from OpenAI Realtime audio at <300ms latency
 - **Emotion control** — Fine-grained emotion parameters (label, intensity, valence, arousal)
 - **Character control** — Speech rate, pitch, expressivity, motion gain
 - **Pluggable adapters** — Swap LLM, TTS, and avatar providers via config
-- **Interactive demo** — Browser demo at `/static/demo.html` with WebSocket + WebRTC modes
+- **Interactive demo** — Browser demo at `/static/demo.html`
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ make install
 
 # Set your API keys
 export OPENAI_API_KEY=sk-...
-export DID_API_KEY=...        # Optional: for D-ID WebRTC avatars
+export SIMLI_API_KEY=...      # For Simli real-time avatars
 ```
 
 ### Try the Demo
@@ -40,15 +40,11 @@ make dev
 
 Open **http://localhost:8000/static/demo.html** in your browser.
 
-**Standard mode (WebSocket):**
 1. Click **Connect** → establishes a WebSocket session
 2. Type a message and click **Send**
-3. Streaming text and audio play in real time
+3. Streaming text, audio, and lip-synced avatar video play in real time
 
-**D-ID WebRTC mode:**
-1. Set `DID_API_KEY` and restart the server
-2. Click **Connect D-ID** → server creates a D-ID agent + stream, browser connects via WebRTC
-3. Type a message and click **Send** → avatar speaks with lip-synced video and audio
+With `SIMLI_API_KEY` set, the server forwards audio to Simli and streams JPEG frames back to the browser via VideoFrame events.
 
 ### CLI Demo
 
@@ -62,29 +58,30 @@ make demo    # Terminal 2: CLI client
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                  CLIENT (browser / CLI)                       │
-└──────────────────────┬───────────────────────┬───────────────┘
-                       │  WS /v1/sessions/…    │  HTTP /v1/did/…
-                       ▼                       ▼
+└──────────────────────────────┬───────────────────────────────┘
+                               │  WS /v1/sessions/…
+                               ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                   API GATEWAY (FastAPI)                       │
-└──────────────────────┬───────────────────────────────────────┘
-                       │
-                       ▼
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                    ORCHESTRATOR (async)                       │
 │                                                              │
 │  UserText ──► [Realtime API] ──► text + audio chunks         │
 │                                       │                      │
 │                                       ▼                      │
-│                                  [Avatar]                    │
-│                            (stub / D-ID / cloud)            │
+│                            [Simli Avatar Adapter]            │
+│                         (resample 24kHz → 16kHz,            │
+│                          send binary PCM over WS)            │
 └──────────────────────────────────────────────────────────────┘
-                                        │ WebRTC (D-ID mode)
+                                        │ VideoFrame events
                                         ▼
-                               Browser video element
+                               Browser canvas element
 ```
 
-**D-ID hybrid flow**: the server creates the D-ID agent and stream, negotiates WebRTC (SDP + ICE relay), then sends text via the chat API. Video and audio travel directly from D-ID to the browser over WebRTC — the server never touches the media.
+**Simli flow**: OpenAI Realtime API produces audio → server resamples from 24kHz to 16kHz and forwards binary PCM to Simli's WebSocket → Simli returns binary JPEG frames → server sends `video_frame` events to the browser over the existing WebSocket connection.
 
 ## Project Structure
 
@@ -98,8 +95,9 @@ tth/
 │   │   └── avatar/
 │   │       ├── stub.py              # Placeholder RGB frames
 │   │       ├── mock_cloud.py        # Simulated cloud adapter (CI/dev)
-│   │       ├── did_streaming.py     # D-ID WebRTC streaming
-│   │       ├── did_cloud.py         # D-ID Talks API (text-to-video)
+│   │       ├── simli.py             # Simli real-time avatar (primary)
+│   │       ├── did_streaming.py     # D-ID WebRTC streaming (legacy)
+│   │       ├── did_cloud.py         # D-ID Talks API (text-to-video, legacy)
 │   │       ├── liveportrait_cloud.py
 │   │       └── cloud_base.py        # Base class for cloud adapters
 │   ├── control/        # Emotion/character mapping
@@ -126,16 +124,6 @@ tth/
 | `/v1/health` | GET | Per-component health status |
 | `/v1/models` | GET | Active adapter capabilities |
 
-### D-ID WebRTC
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/did/sessions/{id}/connect` | POST | Create D-ID agent + stream, return SDP offer |
-| `/v1/did/sessions/{id}/sdp` | POST | Relay browser SDP answer to D-ID |
-| `/v1/did/sessions/{id}/ice` | POST | Relay ICE candidates to D-ID |
-| `/v1/did/sessions/{id}/chat` | POST | Send text for avatar to speak |
-| `/v1/did/sessions/{id}` | DELETE | Close WebRTC session |
-
 ### WebSocket Protocol
 
 **Client → Server:**
@@ -161,7 +149,7 @@ tth/
 # config/base.yaml
 components:
   avatar:
-    primary: did_streaming       # D-ID WebRTC (requires DID_API_KEY)
+    primary: simli               # Simli real-time avatars (requires SIMLI_API_KEY)
     fallback: [stub_avatar]
 ```
 
@@ -171,9 +159,10 @@ Available avatar adapters:
 |---------|-------------|---------|
 | `stub_avatar` | Placeholder frames, no external calls | — |
 | `mock_cloud_avatar` | Simulated latency, JPEG frames (dev/CI) | — |
-| `did_streaming` | D-ID Agents SDK, WebRTC to browser | `DID_API_KEY` |
-| `did_cloud` | D-ID Talks API, text-to-video (not real-time) | `DID_API_KEY` |
+| `simli` | Simli real-time lip-sync, <300ms latency | `SIMLI_API_KEY` |
 | `liveportrait_cloud` | LivePortrait via Modal/RunPod WebSocket | `MODAL_API_KEY` |
+| `did_streaming` | D-ID Agents SDK, WebRTC to browser (legacy) | `DID_API_KEY` |
+| `did_cloud` | D-ID Talks API, text-to-video (legacy) | `DID_API_KEY` |
 
 ### Environment Variables
 
@@ -182,8 +171,9 @@ Available avatar adapters:
 OPENAI_API_KEY=sk-...
 
 # Avatar providers (pick one)
-DID_API_KEY=...            # D-ID WebRTC streaming
+SIMLI_API_KEY=...          # Simli real-time avatars (primary)
 MODAL_API_KEY=...          # LivePortrait on Modal
+DID_API_KEY=...            # D-ID (legacy)
 
 # Optional alternative providers
 ANTHROPIC_API_KEY=...
@@ -199,6 +189,7 @@ Change avatar with no code edits:
 components:
   avatar:
     primary: mock_cloud_avatar   # dev/CI — no API key needed
+    # primary: simli             # production — requires SIMLI_API_KEY
 ```
 
 ```bash
@@ -223,7 +214,7 @@ make demo       # CLI demo client
 | Component | Provider | Cost |
 |-----------|----------|------|
 | LLM + TTS | OpenAI Realtime API | ~$0.06/min audio |
-| Avatar | D-ID streaming | Per D-ID plan |
+| Avatar | Simli | ~$0.05/min |
 | Avatar | stub / mock | $0 |
 
 ## License

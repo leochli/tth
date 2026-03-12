@@ -7,6 +7,7 @@ from tth.adapters.avatar.cloud_base import CloudAvatarAdapterBase
 from tth.adapters.avatar.liveportrait_cloud import LivePortraitCloudAdapter
 from tth.adapters.avatar.did_cloud import DIDCloudAvatar
 from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
+from tth.adapters.avatar.simli import SimliAvatarAdapter
 
 __all__ = [
     "StubAvatarAdapter",
@@ -15,4 +16,5 @@ __all__ = [
     "LivePortraitCloudAdapter",
     "DIDCloudAvatar",
     "DIDStreamingAvatar",
+    "SimliAvatarAdapter",
 ]
