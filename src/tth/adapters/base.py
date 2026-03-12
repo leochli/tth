@@ -31,13 +31,6 @@ class AdapterBase(ABC):
         """Stream output tokens/chunks/frames. Must be an async generator."""
         ...
 
-    async def infer_batch(
-        self,
-        input: str | bytes | AudioChunk,
-        control: TurnControl,
-    ) -> list[Any]:
-        return [chunk async for chunk in self.infer_stream(input, control, {})]
-
     async def interrupt(self) -> None:
         """Interrupt current inference and clear buffers. Optional.
 

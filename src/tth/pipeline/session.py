@@ -15,7 +15,6 @@ class Session:
         {
             "IDLE",
             "LLM_RUN",
-            "CTRL_MERGE",
             "TTS_RUN",
             "AVATAR_RUN",
             "STREAMING_OUTPUT",
@@ -63,9 +62,6 @@ class Session:
     def append_history(self, role: str, content: str) -> None:
         """Append a message to conversation history for multi-turn context."""
         self.context["history"].append({"role": role, "content": content})
-
-    def reset_drift(self) -> None:
-        self.drift_controller.reset()
 
 
 class SessionManager:

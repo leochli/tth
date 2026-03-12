@@ -5,14 +5,11 @@ app:
 
 # Component configuration
 # The system uses OpenAI's Realtime API which combines LLM+TTS in a single connection.
-# For offline testing, use the 'offline_mock' profile which uses separate mock adapters.
 components:
   realtime:
-    mode: api
     primary: openai_realtime     # → adapters/realtime/openai_realtime.py
     model: gpt-4o-realtime-preview-2024-12-17
   avatar:
-    mode: api
     primary: simli
     fallback: [stub_avatar]
     # Avatar adapter options:
@@ -47,19 +44,6 @@ components:
     # did_streaming:
     #   resolution: [512, 512]
     #   fps: 25
-    #
-    # liveportrait_cloud (requires audio-driven model)
-    #   - LivePortrait is video-to-video animation (NOT audio-to-video)
-    #   - Requires driving video for motion, not audio input
-    #   - For audio-driven avatars, consider SadTalker or Wav2Lip
-    # liveportrait_cloud:
-    #   endpoint_url: "wss://your-name--liveportrait-avatar.modal.run/ws"
-    #   api_key_env: "MODAL_API_KEY"
-    #   timeout_ms: 5000
-    #   resolution: [512, 512]
-    #   fps: 25
-    #   default_avatar: "default_avatar_01"
-    #   min_chunk_ms: 200
 
 # Persona definitions with emotion and character defaults
 # Each persona can be selected via persona_id when creating a session

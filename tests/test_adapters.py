@@ -2,13 +2,9 @@
 """Unit tests for adapters — mock httpx, verify event shapes."""
 
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 from tth.core.types import (
     TurnControl,
     AudioChunk,
-    EmotionControl,
-    EmotionLabel,
     estimate_mp3_duration_ms,
 )
 from tth.adapters.avatar.stub import StubAvatarAdapter
@@ -16,19 +12,6 @@ from tth.core.registry import get, list_registered
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
-
-
-def test_registry_has_openai_chat():
-    # Importing the adapter modules registers them
-    import tth.adapters.llm.openai_api  # noqa
-
-    assert "openai_chat" in list_registered()
-
-
-def test_registry_has_openai_tts():
-    import tth.adapters.tts.openai_tts  # noqa
-
-    assert "openai_tts" in list_registered()
 
 
 def test_registry_has_stub_avatar():

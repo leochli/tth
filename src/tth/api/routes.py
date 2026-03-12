@@ -18,8 +18,10 @@ from tth.core.types import (
     ErrorEvent,
 )
 from tth.control.mapper import merge_controls
+from tth.core.logging import get_logger
 
 router = APIRouter()
+_log = get_logger(__name__)
 
 # These are set by main.py at startup
 _session_manager = None
@@ -200,6 +202,15 @@ async def models():
     )
 
 
+def _get_did_avatar():
+    """Return DIDStreamingAvatar if configured, else None."""
+    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
+    orch = get_orchestrator()
+    if orch and isinstance(orch.avatar, DIDStreamingAvatar):
+        return orch.avatar
+    return None
+
+
 # ── D-ID WebRTC Session Endpoints ───────────────────────────────────────────
 # These endpoints manage D-ID streaming sessions for browser WebRTC clients.
 # The server creates sessions and relays SDP/ICE, while the browser connects
@@ -212,14 +223,13 @@ async def did_connect(session_id: str):
 
     Returns connection info including SDP offer for browser WebRTC setup.
     """
-    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
     from fastapi import HTTPException
 
-    orch = get_orchestrator()
-    if not orch or not isinstance(orch.avatar, DIDStreamingAvatar):
+    avatar = _get_did_avatar()
+    if not avatar:
         raise HTTPException(status_code=503, detail="D-ID streaming not configured")
 
-    conn_info = await orch.avatar.create_connection(session_id)
+    conn_info = await avatar.create_connection(session_id)
     if not conn_info:
         raise HTTPException(status_code=502, detail="Failed to create D-ID connection")
 
@@ -235,39 +245,33 @@ async def did_connect(session_id: str):
 @router.post("/v1/did/sessions/{session_id}/sdp")
 async def did_sdp(session_id: str, req: DIDSDPAnswerRequest) -> dict:
     """Submit SDP answer from browser to D-ID."""
-    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
-
-    orch = get_orchestrator()
-    if not orch or not isinstance(orch.avatar, DIDStreamingAvatar):
+    avatar = _get_did_avatar()
+    if not avatar:
         return {"success": False, "error": "D-ID streaming not configured"}
 
-    success = await orch.avatar.submit_sdp_answer(session_id, {"sdp": req.sdp, "type": req.type})
+    success = await avatar.submit_sdp_answer(session_id, {"sdp": req.sdp, "type": req.type})
     return {"success": success}
 
 
 @router.post("/v1/did/sessions/{session_id}/ice")
 async def did_ice(session_id: str, req: DIDICECandidateRequest) -> dict:
     """Submit ICE candidate from browser to D-ID."""
-    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
-
-    orch = get_orchestrator()
-    if not orch or not isinstance(orch.avatar, DIDStreamingAvatar):
+    avatar = _get_did_avatar()
+    if not avatar:
         return {"success": False, "error": "D-ID streaming not configured"}
 
-    success = await orch.avatar.submit_ice_candidate(session_id, req.model_dump(exclude_none=True))
+    success = await avatar.submit_ice_candidate(session_id, req.model_dump(exclude_none=True))
     return {"success": success}
 
 
 @router.post("/v1/did/sessions/{session_id}/chat")
 async def did_chat(session_id: str, req: DIDTextRequest) -> dict:
     """Send text to D-ID agent for speaking."""
-    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
-
-    orch = get_orchestrator()
-    if not orch or not isinstance(orch.avatar, DIDStreamingAvatar):
+    avatar = _get_did_avatar()
+    if not avatar:
         return {"success": False, "error": "D-ID streaming not configured"}
 
-    success = await orch.avatar.send_text(session_id, req.text)
+    success = await avatar.send_text(session_id, req.text)
     if not success:
         return {"success": False, "error": "Failed to send message to D-ID"}
     return {"success": True}
@@ -276,13 +280,11 @@ async def did_chat(session_id: str, req: DIDTextRequest) -> dict:
 @router.delete("/v1/did/sessions/{session_id}")
 async def did_disconnect(session_id: str) -> dict:
     """Close a D-ID streaming connection."""
-    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
-
-    orch = get_orchestrator()
-    if not orch or not isinstance(orch.avatar, DIDStreamingAvatar):
+    avatar = _get_did_avatar()
+    if not avatar:
         return {"success": False, "error": "D-ID streaming not configured"}
 
-    await orch.avatar.close_connection(session_id)
+    await avatar.close_connection(session_id)
     return {"success": True}
 
 
@@ -299,6 +301,6 @@ def _parse_inbound(raw: str):
             return InterruptEvent(**data)
         if t == "control_update":
             return ControlUpdateEvent(**data)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("failed to parse inbound message", error=str(exc))
     return None

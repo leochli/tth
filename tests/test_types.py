@@ -179,8 +179,6 @@ def test_audio_chunk_event_bytes_base64():
 
 def test_audio_chunk_event_with_encoding():
     """AudioChunkEvent can specify encoding and sample_rate."""
-    import base64
-
     raw = b"\x00\x01\x02\x03"
     evt = AudioChunkEvent(
         data=raw,

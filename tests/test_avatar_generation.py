@@ -6,7 +6,6 @@ Run with: pytest tests/test_avatar_generation.py -v
 """
 from __future__ import annotations
 
-import asyncio
 import time
 
 import pytest
