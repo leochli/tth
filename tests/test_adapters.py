@@ -2,13 +2,9 @@
 """Unit tests for adapters — mock httpx, verify event shapes."""
 
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 from tth.core.types import (
     TurnControl,
     AudioChunk,
-    EmotionControl,
-    EmotionLabel,
     estimate_mp3_duration_ms,
 )
 from tth.adapters.avatar.stub import StubAvatarAdapter

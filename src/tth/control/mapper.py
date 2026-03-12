@@ -8,33 +8,6 @@ from tth.core.types import (
 )
 
 
-# ── OpenAI TTS mappings ───────────────────────────────────────────────────────
-
-_OPENAI_VOICE_MAP: dict[EmotionLabel, str] = {
-    EmotionLabel.NEUTRAL: "nova",
-    EmotionLabel.HAPPY: "shimmer",
-    EmotionLabel.SAD: "onyx",
-    EmotionLabel.ANGRY: "echo",
-    EmotionLabel.SURPRISED: "fable",
-    EmotionLabel.FEARFUL: "alloy",
-    EmotionLabel.DISGUSTED: "echo",
-}
-
-
-def map_emotion_to_openai_tts(emotion: EmotionControl, character: CharacterControl) -> dict:
-    """
-    OpenAI TTS has no direct emotion parameter, so we proxy it via:
-    - voice selection (different voices carry different tonal qualities)
-    - speed adjustment driven by arousal level (excited=faster, calm=slower)
-    """
-    speed_mod = 1.0 + (emotion.arousal * 0.15)  # ±15% speed from arousal
-    speed = round(max(0.25, min(4.0, character.speech_rate * speed_mod)), 2)
-    return {
-        "voice": _OPENAI_VOICE_MAP.get(emotion.label, "alloy"),
-        "speed": speed,
-    }
-
-
 # ── LLM system prompt injection ───────────────────────────────────────────────
 
 

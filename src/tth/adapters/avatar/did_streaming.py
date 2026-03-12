@@ -21,14 +21,11 @@ Browser handles:
 """
 from __future__ import annotations
 
-import asyncio
 import base64
-import io
 import json
 import logging
 import os
 import urllib.parse
-import uuid
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
@@ -281,7 +278,7 @@ class DIDStreamingAvatar(AdapterBase):
             # URL-encode stream_id (contains $ character)
             encoded_stream_id = urllib.parse.quote(conn.stream_id, safe='')
             url = f"/agents/{conn.agent_id}/streams/{encoded_stream_id}/sdp"
-            logger.info(f"Submitting SDP answer to D-ID")
+            logger.info("Submitting SDP answer to D-ID")
             response = await self._client.post(url, json={
                 "session_id": conn.webrtc_session_id,
                 "answer": answer,

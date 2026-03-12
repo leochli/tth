@@ -36,8 +36,7 @@ def _generate_color_frame(hue: float = 0.0, frame_index: int = 0) -> bytes:
     bg_color = (int(r * 255), int(g * 255), int(b * 255))
     draw.rectangle([(0, 0), (_W, _H)], fill=bg_color)
 
-    # Draw frame number as text (centered)
-    text = f"Frame {frame_index}"
+    # Draw frame indicator (centered)
     text_color = (255, 255, 255) if sum(bg_color) < 400 else (0, 0, 0)
 
     # Use a simple approach - draw a circle that pulses
