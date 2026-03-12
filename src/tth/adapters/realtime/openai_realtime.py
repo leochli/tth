@@ -36,7 +36,7 @@ class OpenAIRealtimeAdapter(AdapterBase):
     """
 
     _WS_URL = "wss://api.openai.com/v1/realtime"
-    _MODEL = "gpt-4o-realtime-preview-2024-12-17"
+    _MODEL = "gpt-realtime"  # GA model (was gpt-4o-realtime-preview in beta)
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         super().__init__(config or {})
@@ -65,6 +65,7 @@ class OpenAIRealtimeAdapter(AdapterBase):
             session_update = {
                 "type": "session.update",
                 "session": {
+                    "type": "realtime",  # Required: realtime session for speech-to-speech
                     "modalities": ["text", "audio"],
                     "instructions": system_instructions,
                     "voice": voice,

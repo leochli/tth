@@ -11,6 +11,10 @@
 | LLM Adapter (OpenAI) | Complete | Streaming chat completions (legacy) |
 | TTS Adapter (OpenAI) | Complete | Streaming PCM (legacy) |
 | Avatar Stub | Complete | Placeholder frames |
+| Avatar Mock Cloud | Complete | Simulated cloud latency for testing |
+| Avatar Cloud Base | Complete | WebSocket management, reconnection, interrupts |
+| LivePortrait Cloud | Complete | Modal/RunPod deployment ready |
+| Client Renderer | Complete | Canvas-based A/V sync |
 | Control Mapper | Complete | Emotion + character mapping |
 | Orchestrator | Complete | Realtime→Avatar pipeline |
 | Session State | Complete | State machine + drift control |
@@ -45,6 +49,20 @@
 - [x] Interrupt handling via `response.cancel`
 - [x] Updated orchestrator to use Realtime→Avatar pipeline
 
+### Cloud Avatar System
+- [x] Audio resampling utility (24kHz → 16kHz) using scipy
+- [x] Audio chunk buffer with configurable chunk size
+- [x] Mock cloud adapter for development/CI testing
+- [x] Cloud avatar base class with WebSocket management
+- [x] LivePortrait cloud adapter for Modal deployment
+- [x] Interrupt support in AdapterBase
+- [x] Avatar interrupt handling in routes.py
+- [x] Performance metrics tracking module
+- [x] Client-side avatar renderer with A/V sync
+- [x] Web Audio API synchronization controller
+- [x] Demo client (HTML/JS)
+- [x] Modal deployment package with LivePortrait integration
+
 ## Acceptance Criteria
 
 - [x] `make dev` starts server
@@ -57,6 +75,10 @@
 - [x] A/V drift tracked per session
 - [x] `/v1/health` and `/v1/models` endpoints
 - [x] Realtime API integration for reduced latency
+- [x] Cloud avatar infrastructure
+- [x] Mock cloud adapter for offline testing
+- [x] Avatar interrupt support
+- [x] Client-side rendering with A/V sync
 
 ## Testing Commands
 
@@ -75,13 +97,20 @@ make test-interactive MESSAGE="Hello, tell me about yourself"
 
 # Interactive demo (requires running server)
 make demo-interactive
+
+# Deploy avatar service to Modal
+modal deploy deployment/modal/avatar_service/app.py
+
+# Test LivePortrait API (spike)
+modal run deployment/modal/avatar_service/test_liveportrait.py
 ```
 
 ## Future Work (v2)
 
 - [ ] Self-hosted LLM adapter (Ollama, vLLM)
 - [ ] Self-hosted TTS adapter (CosyVoice, F5-TTS)
-- [ ] Real avatar adapter (video synthesis)
 - [ ] Self-hosted Realtime adapter (local LLM+TTS)
+- [ ] Default avatar assets (pre-processed face images)
+- [ ] RunPod deployment alternative
 - [ ] Training infrastructure
-- [ ] GPU deployment config
+- [ ] GPU deployment config for self-hosted avatar

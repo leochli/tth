@@ -75,7 +75,13 @@ tth/
 │   │   │   ├── openai_tts.py    # OpenAI TTS (streaming PCM)
 │   │   │   └── mock_tts.py      # Pseudo-audio mock for offline testing
 │   │   └── avatar/
-│   │       └── stub.py          # Placeholder frames (content_type="raw_rgb")
+│   │       ├── stub.py          # Placeholder frames (content_type="raw_rgb")
+│   │       ├── mock_cloud.py    # Mock cloud adapter for development/CI
+│   │       ├── cloud_base.py    # Base class for cloud avatar services
+│   │       ├── liveportrait_cloud.py  # LivePortrait via Modal/RunPod
+│   │       ├── buffer.py        # Audio chunk buffering + resampling
+│   │       ├── audio_utils.py   # Audio resampling utilities
+│   │       └── metrics.py       # Performance metrics tracking
 │   │
 │   ├── control/             # Control plane: emotion + character mapping
 │   │   ├── mapper.py        # Unified → provider-specific parameter mapping
@@ -107,6 +113,18 @@ tth/
 │   ├── demo.py              # End-to-end demo script
 │   ├── interactive_test.py  # Test pipeline with playable audio output
 │   └── interactive_demo.py  # Interactive demo with playable output
+│
+├── client/                  # Browser client for avatar rendering
+│   ├── avatar_renderer.js   # Canvas-based video renderer with A/V sync
+│   ├── av_sync.js           # Web Audio API synchronization
+│   ├── demo.html            # Demo page
+│   └── demo.js              # Demo client logic
+│
+├── deployment/              # Cloud deployment configurations
+│   └── modal/
+│       └── avatar_service/
+│           ├── app.py       # LivePortrait Modal deployment
+│           └── test_liveportrait.py  # API spike test script
 │
 └── docs/                    # Documentation
     ├── ARCHITECTURE.md      # This file
@@ -224,7 +242,48 @@ Features:
 - Pending control storage for `ControlUpdateEvent`
 - Drift controller instance per session
 
-### 8. Drift Controller (`src/tth/alignment/drift.py`)
+### 8. Cloud Avatar Adapters (`src/tth/adapters/avatar/`)
+
+The avatar subsystem supports both local stub adapters and cloud-based real-time avatar generation:
+
+**Architecture**:
+```
+TTH Server ──WebSocket──► Cloud GPU Service (LivePortrait)
+    │                           │
+    │ AudioChunk (24kHz PCM)    │ VideoFrame (JPEG)
+    │ ─────────────────────────►│
+    │                           │
+    │◄───────────────────────── │
+```
+
+**Components**:
+- `CloudAvatarAdapterBase`: Base class with WebSocket management, reconnection, health checks, interrupt handling
+- `LivePortraitCloudAdapter`: Modal/RunPod deployment for real-time avatar generation
+- `MockCloudAvatarAdapter`: Simulates cloud latency for offline testing
+- `AudioChunkBuffer`: Buffers and resamples audio (24kHz → 16kHz for LivePortrait)
+- `AudioResampler`: High-quality sample rate conversion using scipy
+
+**Latency Budget** (for real-time interaction):
+| Stage | Target |
+|-------|--------|
+| LLM+TTS (Realtime API) | ~200-500ms |
+| Avatar generation | **<300ms** |
+| Network transfer | ~50-100ms |
+
+### 9. Client-Side Rendering (`client/`)
+
+Browser-based avatar rendering with A/V synchronization:
+
+**Components**:
+- `AvatarRenderer`: Canvas-based JPEG frame rendering with frame queue
+- `AVSyncController`: Web Audio API integration for gapless playback
+
+**A/V Sync Strategy**:
+1. Audio chunks scheduled via Web Audio API for gapless playback
+2. Video frames queued and selected by timestamp
+3. Drift tracking between audio and video timelines
+
+### 10. Drift Controller (`src/tth/alignment/drift.py`)
 
 Tracks audio vs video timestamp drift:
 

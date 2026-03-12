@@ -90,7 +90,11 @@ class Orchestrator:
                     sample_rate=event.sample_rate,
                 )
 
-                ctx = {**session.context, "frame_counter": frame_counter}
+                ctx = {
+                    **session.context,
+                    "frame_counter": frame_counter,
+                    "session_id": session.id,
+                }
                 async for frame in self.avatar.infer_stream(audio_chunk, resolved, ctx):
                     drift = session.drift_controller.update(
                         event.timestamp_ms, frame.timestamp_ms

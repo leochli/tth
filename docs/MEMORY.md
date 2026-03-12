@@ -76,3 +76,42 @@ These parameters are logged as warnings when non-default values are used.
 1. Server: Use PCM format, pass encoding/sample_rate through pipeline
 2. Client: Convert Int16 PCM to Float32, schedule with nextStartTime
 3. Use scheduled playback to avoid gaps between chunks
+
+## Cloud Avatar System
+
+### Audio Resampling
+- LivePortrait requires 16kHz audio input
+- Realtime API outputs 24kHz PCM
+- Use scipy.signal.resample for high-quality conversion
+- Buffer audio chunks until minimum duration (200ms default) for better lip sync
+
+### WebSocket Protocol
+- Session-scoped connection (init → chunks → end)
+- `interrupt` message clears cloud-side buffers
+- Frame queue with backpressure (drop oldest when full)
+
+### Latency Budget
+- Target: <300ms for avatar generation
+- Cold start: 10-30s (mitigate with keep_warm=1)
+- Network RTT: ~50-100ms depending on region
+
+### Adapter Interrupt Pattern
+```python
+async def interrupt(self) -> None:
+    """Clear buffers on interrupt."""
+    self._buffer.reset()
+    # Clear pending frames queue
+    while not self._pending_frames.empty():
+        try:
+            self._pending_frames.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+    # Notify cloud service
+    if self._ws and self._ws.open:
+        await self._ws.send(json.dumps({"type": "interrupt", ...}))
+```
+
+### Client-Side A/V Sync
+1. Audio: Schedule PCM chunks with Web Audio API for gapless playback
+2. Video: Queue frames, select by timestamp matching audio position
+3. Drift: Track difference between audio time and frame timestamp
