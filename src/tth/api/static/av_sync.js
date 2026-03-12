@@ -9,12 +9,17 @@ export class AVSyncController {
   /**
    * @param {AudioContext} audioContext - Web Audio context
    * @param {AvatarRenderer} renderer - Avatar renderer instance
+   * @param {number} avatarLatencyMs - Audio scheduling delay to match avatar
+   *   processing latency (ms). Audio is held back by this amount so that the
+   *   corresponding Simli video frames arrive before the audio starts playing.
+   *   Default 300ms matches Simli's typical 200-400ms generation latency.
    */
-  constructor(audioContext, renderer) {
+  constructor(audioContext, renderer, avatarLatencyMs = 300) {
     this.audioContext = audioContext;
     this.renderer = renderer;
     this.audioStartTime = null;
     this.nextStartTime = 0;
+    this._avatarLatencyS = avatarLatencyMs / 1000;
 
     // Track scheduled sources for cleanup
     this._activeSources = [];
@@ -47,10 +52,13 @@ export class AVSyncController {
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
 
-    // Schedule for gapless playback
+    // Schedule for gapless playback, maintaining a forward buffer equal to
+    // the avatar's processing latency.  This ensures audio never starts
+    // playing until the corresponding video frames have had time to arrive.
     const currentTime = this.audioContext.currentTime;
-    if (this.nextStartTime < currentTime) {
-      this.nextStartTime = currentTime;
+    const minStartTime = currentTime + this._avatarLatencyS;
+    if (this.nextStartTime < minStartTime) {
+      this.nextStartTime = minStartTime;
 
       // First chunk - notify renderer
       if (this.audioStartTime === null) {

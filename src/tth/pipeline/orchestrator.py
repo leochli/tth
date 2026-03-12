@@ -67,38 +67,26 @@ class Orchestrator:
         frame_counter = 0
         full_response: list[str] = []
 
-        # Send user text and stream response (connection already established)
-        session.transition("LLM_RUN")
-        await self.realtime.send_user_text(text)
+        # Avatar runs in a concurrent task so audio is never blocked waiting for
+        # Simli's 200-400ms processing latency.  Each (audio_chunk, audio_ts) pair
+        # is placed on avatar_q; the worker drives infer_stream sequentially and
+        # puts VideoFrameEvents in output_q as they arrive.
+        avatar_q: asyncio.Queue[tuple[AudioChunk, float] | None] = asyncio.Queue(maxsize=32)
 
-        async for event in self.realtime.stream_events():
-            await output_q.put(event)
-
-            if isinstance(event, TextDeltaEvent):
-                full_response.append(event.token)
-
-            elif isinstance(event, AudioChunkEvent):
-                session.transition("TTS_RUN")
-                session.transition("AVATAR_RUN")
-
-                # Convert AudioChunkEvent to AudioChunk for avatar
-                audio_chunk = AudioChunk(
-                    data=event.data,
-                    timestamp_ms=event.timestamp_ms,
-                    duration_ms=event.duration_ms,
-                    encoding=event.encoding,
-                    sample_rate=event.sample_rate,
-                )
-
+        async def _avatar_worker() -> None:
+            nonlocal frame_counter
+            while True:
+                item = await avatar_q.get()
+                if item is None:
+                    break
+                audio_chunk, audio_ts = item
                 ctx = {
                     **session.context,
                     "frame_counter": frame_counter,
                     "session_id": session.id,
                 }
                 async for frame in self.avatar.infer_stream(audio_chunk, resolved, ctx):
-                    drift = session.drift_controller.update(
-                        event.timestamp_ms, frame.timestamp_ms
-                    )
+                    drift = session.drift_controller.update(audio_ts, frame.timestamp_ms)
                     await output_q.put(
                         VideoFrameEvent(
                             data=frame.data,
@@ -111,6 +99,47 @@ class Orchestrator:
                         )
                     )
                     frame_counter += 1
+
+        avatar_task = asyncio.create_task(_avatar_worker())
+
+        # Send user text and stream response (connection already established)
+        session.transition("LLM_RUN")
+        await self.realtime.send_user_text(text)
+
+        try:
+            async for event in self.realtime.stream_events():
+                await output_q.put(event)
+
+                if isinstance(event, TextDeltaEvent):
+                    full_response.append(event.token)
+
+                elif isinstance(event, AudioChunkEvent):
+                    session.transition("TTS_RUN")
+                    session.transition("AVATAR_RUN")
+
+                    audio_chunk = AudioChunk(
+                        data=event.data,
+                        timestamp_ms=event.timestamp_ms,
+                        duration_ms=event.duration_ms,
+                        encoding=event.encoding,
+                        sample_rate=event.sample_rate,
+                    )
+                    await avatar_q.put((audio_chunk, event.timestamp_ms))
+
+        except asyncio.CancelledError:
+            avatar_task.cancel()
+            try:
+                await avatar_task
+            except asyncio.CancelledError:
+                pass
+            raise
+
+        # Signal worker to stop and wait for any in-flight frames to drain
+        await avatar_q.put(None)
+        try:
+            await avatar_task
+        except Exception as e:
+            logger.error(f"Avatar pipeline error: {e}")
 
         # Track assistant response in history
         if full_response:
