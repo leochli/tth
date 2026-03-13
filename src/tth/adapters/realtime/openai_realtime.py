@@ -117,8 +117,10 @@ class OpenAIRealtimeAdapter(AdapterBase):
         """Convert Realtime API events to internal events."""
         event_type = event.get("type")
 
-        if event_type == "response.output_audio.delta":
-            # Audio output chunk - base64 encoded PCM
+        if event_type in ("response.audio.delta", "response.output_audio.delta"):
+            # Audio output chunk - base64 encoded PCM.
+            # "response.audio.delta" is the current OpenAI Realtime API name;
+            # "response.output_audio.delta" was used in some earlier beta versions.
             audio_b64 = event.get("delta", "")
             if audio_b64:
                 audio_data = base64.b64decode(audio_b64)
@@ -133,8 +135,13 @@ class OpenAIRealtimeAdapter(AdapterBase):
                     )
                 )
 
-        elif event_type == "response.output_audio_transcript.delta":
-            # Text transcript delta
+        elif event_type in (
+            "response.audio_transcript.delta",
+            "response.output_audio_transcript.delta",
+        ):
+            # Text transcript delta.
+            # "response.audio_transcript.delta" is the current name;
+            # "response.output_audio_transcript.delta" covers earlier beta versions.
             text_delta = event.get("delta", "")
             if text_delta:
                 await self._event_queue.put(TextDeltaEvent(token=text_delta))
@@ -153,7 +160,7 @@ class OpenAIRealtimeAdapter(AdapterBase):
             logger.debug("Realtime session updated")
 
         else:
-            logger.debug(f"Realtime event: {event_type}")
+            logger.debug(f"Realtime event (unhandled): {event_type}")
 
     async def send_user_text(self, text: str) -> None:
         """Send user message and trigger response."""
