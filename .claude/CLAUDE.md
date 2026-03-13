@@ -19,6 +19,20 @@ make phase      # Run offline integration tests
 make phase-live # Run tests with live API calls
 ```
 
+### Phased Testing
+
+Run tests incrementally based on what changed. Each phase gates the next—stop on first failure.
+
+| Phase | Script | What it covers | When to run |
+|-------|--------|----------------|-------------|
+| 1 — Unit | `scripts/phase_01_unit.py` | Pure logic, types, config parsing, registry | Any code change |
+| 2 — Offline Smoke | `scripts/phase_02_offline_smoke.py` | Full pipeline with stub/mock adapters, WebSocket events | Pipeline or adapter changes |
+| 3 — Offline Multi-turn | `scripts/phase_03_offline_multiturn.py` | Session continuity, interrupt handling, control updates | Session/orchestrator changes |
+| 4 — Live OpenAI | `scripts/phase_04_live_openai.py` | Real API calls (requires `OPENAI_API_KEY`) | Before merging adapter changes |
+
+**Runner**: `scripts/run_phased_tests.py` runs phases 1–3 by default; pass `--live` for phase 4.
+**Makefile**: `make phase` (offline) or `make phase-live` (all phases).
+
 ## Architecture
 
 ```
@@ -56,6 +70,40 @@ src/tth/
 2. Decorate with `@register("provider_name")`
 3. Implement `infer_stream()` as async generator yielding appropriate types (str for LLM, AudioChunk for TTS, VideoFrame for avatar)
 4. Add config entry in `config/base.yaml` or profile YAML
+
+### Adapter Implementation Contract
+
+Every adapter must satisfy this exact contract:
+
+```python
+from tth.core.registry import register
+from tth.adapters.base import AdapterBase
+
+@register("provider_name")          # Registers in global adapter registry
+class MyAdapter(AdapterBase):        # Must inherit AdapterBase
+    async def infer_stream(self, input, control, context):
+        # Must be an async generator (use `yield`, not `return`)
+        # Yield types by category:
+        #   LLM   → str (text tokens)
+        #   TTS   → AudioChunk
+        #   Avatar → VideoFrame
+        yield ...
+
+    async def health(self) -> HealthStatus:
+        # Required — return HealthStatus with ok=True/False
+        ...
+
+    def capabilities(self) -> AdapterCapabilities:
+        # Optional — defaults to empty AdapterCapabilities()
+        ...
+```
+
+**Additional requirements**:
+- Handle `asyncio.CancelledError` in `infer_stream()` — clean up resources and re-raise (don't swallow)
+- Override `interrupt()` if the adapter supports mid-stream cancellation (clear buffers, notify remote)
+- Add a config entry in `config/base.yaml` or a profile YAML under the appropriate section
+- Create a test file in `tests/` — at minimum, test instantiation and a mocked `infer_stream()` call
+- Never hardcode API keys — read from `self.config` which is populated from YAML/env
 
 ## Workflow Orchestration
 
@@ -103,6 +151,14 @@ Task Management
 4. **Explain Changes**: High-level summary at each step
 5. **Document Results**: Add review section to `docs/IMPLEMENTATION_PLAN.md`
 6. **Capture Lessons**: Update `docs/MEMORY.md` after corrections
+
+## Known Gotchas
+
+- **24kHz → 16kHz resampling**: OpenAI Realtime API outputs 24kHz PCM; avatar adapters (LivePortrait/Simli) expect 16kHz. Use `scipy.signal.resample`—don't just drop samples. Buffer at least 200ms for lip-sync quality.
+- **Realtime API ignores CharacterControl**: `speech_rate`, `pitch_shift`, `expressivity`, and `motion_gain` are silently ignored by the Realtime API. Non-default values are logged as warnings.
+- **PCM-only streaming**: MP3 frames break at arbitrary byte boundaries in browsers. Always stream raw PCM (16-bit, mono) and decode client-side via Web Audio API.
+- **One turn per session**: New `user_text` cancels the in-progress turn task. `control_update` is stored as `pending_control` and applied on the next turn—not mid-stream.
+- **Stub avatar emits `raw_rgb`**: Intentional for offline testing. Don't treat it as a bug.
 
 ## Core Principles
 
