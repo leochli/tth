@@ -122,7 +122,7 @@ def map_emotion_to_new_provider(emotion, character) -> dict:
 
 ### Switch adapter in config
 ```yaml
-# config/profiles/api_only_mac.yaml
+# config/base.yaml — change primary to switch
 components:
   avatar:
     primary: new_provider

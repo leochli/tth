@@ -100,7 +100,3 @@ def map_emotion_to_realtime_voice(emotion: EmotionControl) -> str:
     """
     return _REALTIME_VOICE_MAP.get(emotion.label, "alloy")
 
-
-# ── Future provider mappings (add here when upgrading) ────────────────────────
-# def map_emotion_to_elevenlabs(emotion, character) -> dict: ...
-# def map_emotion_to_heygen(emotion, character) -> dict: ...

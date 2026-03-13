@@ -52,7 +52,6 @@ src/tth/
       stub.py              # placeholder frame stream with sync-friendly timestamps
       mock_cloud.py        # simulated cloud latency for dev/CI
       cloud_base.py        # base class for cloud avatar services
-      did_streaming.py     # D-ID WebRTC streaming (legacy)
       buffer.py            # audio chunk buffering + resampling
       audio_utils.py       # sample rate conversion (24kHz → 16kHz)
       metrics.py           # performance metrics tracking

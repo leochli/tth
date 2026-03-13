@@ -11,18 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 class AudioChunkBuffer:
-    """Buffers and resamples audio chunks for cloud transmission.
+    """Buffers and resamples audio chunks for cloud avatar transmission.
 
     Accumulates audio chunks until minimum duration is reached, then resamples
-    from 24kHz (Realtime API output) to 16kHz (LivePortrait input).
+    from 24kHz (Realtime API output) to 16kHz (Simli avatar input).
 
-    Configurable chunk size - initial testing suggests 200-500ms for better lip sync.
+    Configurable chunk size — Simli uses 100ms; adjust per adapter.
     """
 
     # Default settings
-    MIN_CHUNK_MS = 200  # Configurable - test empirically with LivePortrait
+    MIN_CHUNK_MS = 200  # Configurable per adapter (Simli uses 100ms)
     SOURCE_RATE = 24000  # Realtime API output (PCM)
-    TARGET_RATE = 16000  # LivePortrait input
+    TARGET_RATE = 16000  # Avatar input sample rate
 
     def __init__(self, min_chunk_ms: int = MIN_CHUNK_MS):
         self.min_chunk_ms = min_chunk_ms

@@ -61,7 +61,7 @@ src/tth/
 
 - `config/base.yaml` — Default configuration with OpenAI LLM/TTS and stub avatar
 - `config/profiles/*.yaml` — Profile-specific overrides (merged via deep_merge)
-- Environment variables: `OPENAI_API_KEY` (required), `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY`, etc.
+- Environment variables: `OPENAI_API_KEY` (required), `SIMLI_API_KEY` (for Simli avatar)
 - Profile selection: Set `TTH_PROFILE=profile_name` or edit `profile` in settings
 
 ### Adding New Adapters
@@ -154,7 +154,7 @@ Task Management
 
 ## Known Gotchas
 
-- **24kHz → 16kHz resampling**: OpenAI Realtime API outputs 24kHz PCM; avatar adapters (LivePortrait/Simli) expect 16kHz. Use `scipy.signal.resample`—don't just drop samples. Buffer at least 200ms for lip-sync quality.
+- **24kHz → 16kHz resampling**: OpenAI Realtime API outputs 24kHz PCM; avatar adapters (Simli) expect 16kHz. Use `scipy.signal.resample`—don't just drop samples. Buffer at least 100ms (Simli default) for lip-sync quality.
 - **Realtime API ignores CharacterControl**: `speech_rate`, `pitch_shift`, `expressivity`, and `motion_gain` are silently ignored by the Realtime API. Non-default values are logged as warnings.
 - **PCM-only streaming**: MP3 frames break at arbitrary byte boundaries in browsers. Always stream raw PCM (16-bit, mono) and decode client-side via Web Audio API.
 - **One turn per session**: New `user_text` cancels the in-progress turn task. `control_update` is stored as `pending_control` and applied on the next turn—not mid-stream.

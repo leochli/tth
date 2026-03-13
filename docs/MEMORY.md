@@ -77,10 +77,10 @@ These parameters are logged as warnings when non-default values are used.
 ## Cloud Avatar System
 
 ### Audio Resampling
-- LivePortrait requires 16kHz audio input
+- Simli avatar requires 16kHz audio input
 - Realtime API outputs 24kHz PCM
 - Use scipy.signal.resample for high-quality conversion
-- Buffer audio chunks until minimum duration (200ms default) for better lip sync
+- Buffer audio chunks until minimum duration (100ms for Simli) for lip sync
 
 ### WebSocket Protocol
 - Session-scoped connection (init → chunks → end)

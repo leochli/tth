@@ -35,15 +35,6 @@ components:
       simulated_latency_ms: 150
       resolution: [512, 512]
       fps: 25
-    #
-    # D-ID (legacy/optional — WebRTC to browser, not server-side frames)
-    #   - D-ID Agents SDK for real-time WebRTC streaming
-    #   - Architecturally incompatible: D-ID runs its own TTS, so audio is out of sync
-    #     with OpenAI Realtime output (two independent audio clocks)
-    #   - Set DID_API_KEY environment variable to enable
-    # did_streaming:
-    #   resolution: [512, 512]
-    #   fps: 25
 
 # Persona definitions with emotion and character defaults
 # Each persona can be selected via persona_id when creating a session

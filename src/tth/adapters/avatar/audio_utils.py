@@ -12,7 +12,7 @@ from scipy import signal
 class AudioResampler:
     """Convert PCM audio between sample rates.
 
-    Primary use: 24kHz (OpenAI Realtime API) → 16kHz (LivePortrait input).
+    Primary use: 24kHz (OpenAI Realtime API) → 16kHz (Simli avatar input).
     """
 
     def __init__(self, source_rate: int = 24000, target_rate: int = 16000):

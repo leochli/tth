@@ -18,14 +18,14 @@ from _phase_common import (
 
 
 def main() -> int:
-    print("[phase-04] live OpenAI validation (api_only_mac profile)")
+    print("[phase-04] live OpenAI validation (default profile)")
     root = Path(__file__).resolve().parents[1]
     load_dotenv(root / ".env")
     if not os.getenv("OPENAI_API_KEY") and not os.getenv("TTH_OPENAI_API_KEY"):
         print("[phase-04] SKIP: OPENAI_API_KEY not set")
         return 2
 
-    app = load_app("api_only_mac")
+    app = load_app("")
     with TestClient(app) as client:
         health = client.get("/v1/health")
         assert health.status_code == 200, health.text

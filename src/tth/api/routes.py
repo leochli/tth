@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
-from typing import Any, Optional
 from tth.api.schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -44,36 +42,6 @@ def get_session_manager():
 
 def get_orchestrator():
     return _orchestrator
-
-
-# ── D-ID WebRTC Session Schemas ───────────────────────────────────────────────
-
-class DIDConnectionResponse(BaseModel):
-    """Response with D-ID WebRTC connection info."""
-    agent_id: str
-    stream_id: str
-    session_id: str
-    offer: Optional[dict[str, Any]] = None
-    ice_servers: Optional[list[dict]] = None
-
-
-class DIDSDPAnswerRequest(BaseModel):
-    """SDP answer from browser."""
-    sdp: str
-    type: str = "answer"
-
-
-class DIDICECandidateRequest(BaseModel):
-    """ICE candidate from browser (flat RTCIceCandidate fields)."""
-    candidate: str
-    sdpMid: Optional[str] = None
-    sdpMLineIndex: Optional[int] = None
-    usernameFragment: Optional[str] = None
-
-
-class DIDTextRequest(BaseModel):
-    """Text to send to D-ID chat."""
-    text: str
 
 
 # ── Session lifecycle ─────────────────────────────────────────────────────────
@@ -205,92 +173,6 @@ async def models():
         tts=orch.realtime.capabilities(),
         avatar=orch.avatar.capabilities(),
     )
-
-
-def _get_did_avatar():
-    """Return DIDStreamingAvatar if configured, else None."""
-    from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
-    orch = get_orchestrator()
-    if orch and isinstance(orch.avatar, DIDStreamingAvatar):
-        return orch.avatar
-    return None
-
-
-# ── D-ID WebRTC Session Endpoints ───────────────────────────────────────────
-# These endpoints manage D-ID streaming sessions for browser WebRTC clients.
-# The server creates sessions and relays SDP/ICE, while the browser connects
-# directly to D-ID for video streaming.
-
-
-@router.post("/v1/did/sessions/{session_id}/connect")
-async def did_connect(session_id: str):
-    """Create a D-ID streaming connection for a session.
-
-    Returns connection info including SDP offer for browser WebRTC setup.
-    """
-    from fastapi import HTTPException
-
-    avatar = _get_did_avatar()
-    if not avatar:
-        raise HTTPException(status_code=503, detail="D-ID streaming not configured")
-
-    conn_info = await avatar.create_connection(session_id)
-    if not conn_info:
-        raise HTTPException(status_code=502, detail="Failed to create D-ID connection")
-
-    return DIDConnectionResponse(
-        agent_id=conn_info.agent_id,
-        stream_id=conn_info.stream_id,
-        session_id=conn_info.session_id,
-        offer=conn_info.offer,
-        ice_servers=conn_info.ice_servers,
-    )
-
-
-@router.post("/v1/did/sessions/{session_id}/sdp")
-async def did_sdp(session_id: str, req: DIDSDPAnswerRequest) -> dict:
-    """Submit SDP answer from browser to D-ID."""
-    avatar = _get_did_avatar()
-    if not avatar:
-        return {"success": False, "error": "D-ID streaming not configured"}
-
-    success = await avatar.submit_sdp_answer(session_id, {"sdp": req.sdp, "type": req.type})
-    return {"success": success}
-
-
-@router.post("/v1/did/sessions/{session_id}/ice")
-async def did_ice(session_id: str, req: DIDICECandidateRequest) -> dict:
-    """Submit ICE candidate from browser to D-ID."""
-    avatar = _get_did_avatar()
-    if not avatar:
-        return {"success": False, "error": "D-ID streaming not configured"}
-
-    success = await avatar.submit_ice_candidate(session_id, req.model_dump(exclude_none=True))
-    return {"success": success}
-
-
-@router.post("/v1/did/sessions/{session_id}/chat")
-async def did_chat(session_id: str, req: DIDTextRequest) -> dict:
-    """Send text to D-ID agent for speaking."""
-    avatar = _get_did_avatar()
-    if not avatar:
-        return {"success": False, "error": "D-ID streaming not configured"}
-
-    success = await avatar.send_text(session_id, req.text)
-    if not success:
-        return {"success": False, "error": "Failed to send message to D-ID"}
-    return {"success": True}
-
-
-@router.delete("/v1/did/sessions/{session_id}")
-async def did_disconnect(session_id: str) -> dict:
-    """Close a D-ID streaming connection."""
-    avatar = _get_did_avatar()
-    if not avatar:
-        return {"success": False, "error": "D-ID streaming not configured"}
-
-    await avatar.close_connection(session_id)
-    return {"success": True}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

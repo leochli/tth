@@ -72,7 +72,6 @@ tth/
 │   │       ├── mock_cloud.py    # Mock cloud adapter for development/CI
 │   │       ├── simli.py         # Simli real-time lip-sync avatar (primary)
 │   │       ├── cloud_base.py    # Base class for cloud avatar services
-│   │       ├── did_streaming.py # D-ID WebRTC streaming (legacy)
 │   │       ├── buffer.py        # Audio chunk buffering + resampling
 │   │       ├── audio_utils.py   # Audio resampling utilities (24kHz → 16kHz)
 │   │       └── metrics.py       # Performance metrics tracking
@@ -115,12 +114,6 @@ tth/
 │   ├── av_sync.js           # Web Audio API synchronization
 │   ├── demo.html            # Demo page
 │   └── demo.js              # Demo client logic
-│
-├── deployment/              # Cloud deployment configurations
-│   └── modal/
-│       └── avatar_service/
-│           ├── app.py       # LivePortrait Modal deployment
-│           └── test_liveportrait.py  # API spike test script
 │
 └── docs/                    # Documentation
     ├── ARCHITECTURE.md      # This file

@@ -14,7 +14,7 @@ from _phase_common import (
 
 
 def main() -> int:
-    print("[phase-02] offline smoke (mock_llm + mock_tts + stub_avatar)")
+    print("[phase-02] offline smoke (openai_realtime + stub_avatar)")
     app = load_app("offline_mock")
 
     with TestClient(app) as client:

@@ -12,7 +12,6 @@ import pytest
 
 from tth.adapters.avatar.stub import StubAvatarAdapter
 from tth.adapters.avatar.mock_cloud import MockCloudAvatarAdapter
-from tth.adapters.avatar.did_streaming import DIDStreamingAvatar
 from tth.core.types import AudioChunk, TurnControl, EmotionControl, CharacterControl, EmotionLabel
 
 
@@ -199,58 +198,6 @@ class TestMockCloudAvatar:
         health = await adapter.health()
         assert health.healthy is True
         assert health.latency_ms == 150
-
-
-class TestDIDStreamingAvatar:
-    """Test D-ID Streaming adapter (without API key)."""
-
-    @pytest.mark.asyncio
-    async def test_did_streaming_no_api_key(self):
-        """D-ID adapter should handle missing API key gracefully."""
-        import os
-        from unittest.mock import patch
-        adapter = DIDStreamingAvatar({
-            "resolution": [512, 512],
-            "fps": 25,
-        })
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("DID_API_KEY", None)
-            await adapter.load()
-            health = await adapter.health()
-
-        assert health.healthy is False
-        assert "DID_API_KEY" in health.detail
-
-    @pytest.mark.asyncio
-    async def test_did_streaming_placeholder(self, sample_audio, turn_control, context):
-        """D-ID adapter should yield placeholder frames when not configured."""
-        adapter = DIDStreamingAvatar({
-            "resolution": [512, 512],
-            "fps": 25,
-        })
-        await adapter.load()
-
-        chunk = AudioChunk(
-            data=sample_audio,
-            timestamp_ms=0.0,
-            duration_ms=100.0,
-            encoding="pcm",
-            sample_rate=24000,
-        )
-
-        frames = []
-        async for frame in adapter.infer_stream(chunk, turn_control, context):
-            frames.append(frame)
-
-        # Should yield placeholder frame
-        assert len(frames) >= 1, "Should yield at least one placeholder frame"
-
-        frame = frames[0]
-        assert frame.data is not None
-        assert len(frame.data) > 0
-        assert frame.content_type == "jpeg"
-
-        await adapter.close()
 
 
 class TestAvatarFrameValidation:

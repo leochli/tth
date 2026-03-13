@@ -26,13 +26,6 @@ class AppConfig(BaseModel):
     log_level: str = "info"
 
 
-class ComponentConfig(BaseModel):
-    mode: str = "api"  # "api" | "self_host"
-    primary: str = ""
-    fallback: list[str] = Field(default_factory=list)
-    model_config = {"extra": "allow"}
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="TTH_",
@@ -51,33 +44,13 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("TTH_OPENAI_API_KEY", "OPENAI_API_KEY", "openai_api_key"),
     )
-    anthropic_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "TTH_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "anthropic_api_key"
-        ),
-    )
-    elevenlabs_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "TTH_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY", "elevenlabs_api_key"
-        ),
-    )
-    tavus_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices("TTH_TAVUS_API_KEY", "TAVUS_API_KEY", "tavus_api_key"),
-    )
-    heygen_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices("TTH_HEYGEN_API_KEY", "HEYGEN_API_KEY", "heygen_api_key"),
-    )
 
-    profile: str = "api_only_mac"
+    profile: str = ""
 
     @model_validator(mode="before")
     @classmethod
     def load_yaml(cls, values: dict) -> dict:
-        profile = os.getenv("TTH_PROFILE", values.get("profile", "api_only_mac"))
+        profile = os.getenv("TTH_PROFILE", values.get("profile", ""))
         # Look for config relative to cwd or project root
         for search_root in [Path.cwd(), Path(__file__).parent.parent.parent.parent.parent]:
             base_path = search_root / "config" / "base.yaml"
