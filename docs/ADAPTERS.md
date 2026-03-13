@@ -133,96 +133,10 @@ await adapter.close()
 | sad | onyx |
 | angry | shimmer |
 | surprised | nova |
+| fearful | fable |
+| disgusted | ash |
 
 ---
-
-## LLM Adapters
-
-### OpenAI Chat (`openai_chat`)
-
-Streaming LLM adapter using OpenAI Chat Completions API.
-
-**Location**: `src/tth/adapters/llm/openai_api.py`
-
-**Features**:
-- Streaming token output
-- System prompt injection via control mapper
-- Multi-turn conversation support
-
-**Configuration**:
-```yaml
-components:
-  llm:
-    primary: openai_chat
-    model: gpt-4o-mini
-```
-
-**API Key**: `OPENAI_API_KEY`
-
-**Note**: This adapter is used by the `offline_mock` profile. The default profile uses the Realtime API instead.
-
-### Mock LLM (`mock_llm`)
-
-Deterministic mock adapter for offline testing.
-
-**Location**: `src/tth/adapters/llm/mock_llm.py`
-
-**Features**:
-- No API calls required
-- Deterministic output based on input
-- Fast for CI/local testing
-
-**Configuration**:
-```yaml
-components:
-  llm:
-    primary: mock_llm
-```
-
----
-
-## TTS Adapters
-
-### OpenAI TTS (`openai_tts`)
-
-Streaming TTS adapter using OpenAI Text-to-Speech API.
-
-**Location**: `src/tth/adapters/tts/openai_tts.py`
-
-**Features**:
-- Streaming PCM audio output
-- Voice selection via emotion mapping
-- Speed control via character settings
-
-**Configuration**:
-```yaml
-components:
-  tts:
-    primary: openai_tts
-    model: tts-1
-```
-
-**API Key**: `OPENAI_API_KEY`
-
-**Note**: This adapter is used by the `offline_mock` profile. The default profile uses the Realtime API instead.
-
-### Mock TTS (`mock_tts`)
-
-Deterministic mock adapter for offline testing.
-
-**Location**: `src/tth/adapters/tts/mock_tts.py`
-
-**Features**:
-- No API calls required
-- Generates pseudo-audio data
-- Fast for CI/local testing
-
-**Configuration**:
-```yaml
-components:
-  tts:
-    primary: mock_tts
-```
 
 ---
 
@@ -282,63 +196,6 @@ components:
 
 ---
 
-### LivePortrait Cloud (`liveportrait_cloud`)
-
-Real-time avatar generation via cloud GPU (Modal or RunPod).
-
-**Location**: `src/tth/adapters/avatar/liveportrait_cloud.py`
-
-**Features**:
-- WebSocket streaming for low-latency communication
-- Audio resampling (24kHz → 16kHz) for LivePortrait
-- Automatic reconnection with session resume
-- Interrupt support for real-time interaction
-- Emotion/expression mapping
-
-**Configuration**:
-```yaml
-components:
-  avatar:
-    primary: liveportrait_cloud
-    liveportrait_cloud:
-      endpoint_url: "https://your-name--liveportrait-avatar.modal.run"
-      api_key_env: "MODAL_API_KEY"
-      timeout_ms: 5000
-      resolution: [512, 512]
-      fps: 25
-      default_avatar: "default_avatar_01"
-      min_chunk_ms: 200  # Audio buffer size (200-500ms for lip sync)
-```
-
-**API Key**: `MODAL_API_KEY` (or custom via `api_key_env`)
-
-**Audio Pipeline**:
-1. AudioChunk from Realtime API (24kHz PCM)
-2. Buffered until `min_chunk_ms` accumulated
-3. Resampled to 16kHz for LivePortrait
-4. Sent to cloud via WebSocket
-5. JPEG frames received and yielded
-
-**WebSocket Protocol**:
-
-| Direction | Message Type | Fields |
-|-----------|--------------|--------|
-| TTH → Cloud | `session_init` | `session_id`, `avatar_id`, `emotion_config` |
-| TTH → Cloud | `audio_chunk` | `session_id`, `data` (base64), `timestamp_ms`, `emotion` |
-| TTH → Cloud | `interrupt` | `session_id` |
-| TTH → Cloud | `session_end` | `session_id` |
-| Cloud → TTH | `video_frame` | `data` (base64 JPEG), `timestamp_ms`, `frame_index` |
-| Cloud → TTH | `session_ready` | `session_id`, `avatar_id` |
-| Cloud → TTH | `error` | `code`, `message` |
-
-**Deployment**:
-```bash
-# Deploy to Modal
-modal deploy deployment/modal/avatar_service/app.py
-```
-
----
-
 ### Simli (`simli`)
 
 Real-time audio-to-avatar streaming via Simli's lip-sync model.
@@ -346,6 +203,8 @@ Real-time audio-to-avatar streaming via Simli's lip-sync model.
 **Location**: `src/tth/adapters/avatar/simli.py`
 
 **Pipeline fit**: Designed for OpenAI Realtime API — accepts raw PCM audio (resampled from 24kHz to 16kHz by `AudioChunkBuffer`) and returns JPEG frames over a binary WebSocket. No browser-side WebRTC relay needed; the server manages the Simli connection and sends `video_frame` events to the browser over the existing WebSocket.
+
+**Push-model relay**: The orchestrator starts a persistent relay task at session start. Audio chunks from the Realtime API are continuously forwarded to Simli for the lifetime of the WebSocket connection, ensuring uninterrupted lip-sync across turns.
 
 **Latency**: <300ms audio-to-video
 

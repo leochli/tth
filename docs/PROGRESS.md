@@ -8,15 +8,14 @@
 | Config System | Complete | YAML + env loading |
 | Adapter Registry | Complete | Decorator-based registration |
 | Realtime Adapter (OpenAI) | Complete | Combined LLM+TTS via WebSocket |
-| LLM Adapter (OpenAI) | Complete | Streaming chat completions (legacy) |
-| TTS Adapter (OpenAI) | Complete | Streaming PCM (legacy) |
-| Avatar Stub | Complete | Placeholder frames |
-| Avatar Mock Cloud | Complete | Simulated cloud latency for testing |
+| Simli Avatar | Complete | Real-time lip-sync, <300ms latency, push-model relay |
+| Avatar Stub | Complete | Placeholder frames for offline testing |
+| Avatar Mock Cloud | Complete | Simulated cloud latency for dev/CI |
 | Avatar Cloud Base | Complete | WebSocket management, reconnection, interrupts |
-| LivePortrait Cloud | Complete | Modal/RunPod deployment ready |
+| Audio Pipeline | Complete | Resampling (24kHz→16kHz), buffering, chunk management |
 | Client Renderer | Complete | Canvas-based A/V sync |
 | Control Mapper | Complete | Emotion + character mapping |
-| Orchestrator | Complete | Realtime→Avatar pipeline |
+| Orchestrator | Complete | Realtime→Avatar pipeline with persistent relay |
 | Session State | Complete | State machine + drift control |
 | API Endpoints | Complete | REST + WebSocket |
 | Phase Tests | Complete | Unit, offline, live tests |
@@ -27,11 +26,9 @@
 ### v1 API-Only Mode
 - [x] Core types and events
 - [x] Config system with profile support
-- [x] OpenAI LLM adapter (streaming)
-- [x] OpenAI TTS adapter (streaming PCM)
 - [x] Avatar stub adapter
 - [x] Control mapping (emotion → provider params)
-- [x] Pipeline orchestrator with sentence streaming
+- [x] Pipeline orchestrator
 - [x] Session state machine
 - [x] A/V drift tracking
 - [x] REST API endpoints (`/v1/sessions`, `/v1/health`, `/v1/models`)
@@ -54,14 +51,14 @@
 - [x] Audio chunk buffer with configurable chunk size
 - [x] Mock cloud adapter for development/CI testing
 - [x] Cloud avatar base class with WebSocket management
-- [x] LivePortrait cloud adapter for Modal deployment
+- [x] Simli real-time avatar adapter with push-model relay
 - [x] Interrupt support in AdapterBase
 - [x] Avatar interrupt handling in routes.py
 - [x] Performance metrics tracking module
 - [x] Client-side avatar renderer with A/V sync
 - [x] Web Audio API synchronization controller
+- [x] Safari AudioContext compatibility fix
 - [x] Demo client (HTML/JS)
-- [x] Modal deployment package with LivePortrait integration
 
 ## Acceptance Criteria
 
@@ -75,6 +72,7 @@
 - [x] A/V drift tracked per session
 - [x] `/v1/health` and `/v1/models` endpoints
 - [x] Realtime API integration for reduced latency
+- [x] Simli real-time avatar with push-model relay
 - [x] Cloud avatar infrastructure
 - [x] Mock cloud adapter for offline testing
 - [x] Avatar interrupt support
@@ -97,12 +95,6 @@ make test-interactive MESSAGE="Hello, tell me about yourself"
 
 # Interactive demo (requires running server)
 make demo-interactive
-
-# Deploy avatar service to Modal
-modal deploy deployment/modal/avatar_service/app.py
-
-# Test LivePortrait API (spike)
-modal run deployment/modal/avatar_service/test_liveportrait.py
 ```
 
 ## Future Work (v2)

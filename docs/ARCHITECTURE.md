@@ -50,10 +50,9 @@ tth/
 ├── .env.example             # Template for environment variables
 │
 ├── config/
-│   ├── base.yaml            # Default configuration (OpenAI Realtime + stub avatar)
+│   ├── base.yaml            # Default configuration (OpenAI Realtime + Simli avatar)
 │   └── profiles/
-│       ├── api_only_mac.yaml    # v1: API-only profile (default)
-│       └── offline_mock.yaml    # Testing: Mock adapters (no API calls)
+│       └── offline_mock.yaml    # Testing: stub avatar (no Simli API needed)
 │
 ├── src/tth/
 │   ├── __init__.py
@@ -68,19 +67,14 @@ tth/
 │   │   ├── base.py          # AdapterBase ABC: load/warmup/infer_stream/health
 │   │   ├── realtime/        # Combined LLM+TTS adapters
 │   │   │   └── openai_realtime.py  # OpenAI Realtime API (WebSocket)
-│   │   ├── llm/
-│   │   │   ├── openai_api.py    # OpenAI Chat Completions (streaming)
-│   │   │   └── mock_llm.py      # Deterministic mock for offline testing
-│   │   ├── tts/
-│   │   │   ├── openai_tts.py    # OpenAI TTS (streaming PCM)
-│   │   │   └── mock_tts.py      # Pseudo-audio mock for offline testing
 │   │   └── avatar/
 │   │       ├── stub.py          # Placeholder frames (content_type="raw_rgb")
 │   │       ├── mock_cloud.py    # Mock cloud adapter for development/CI
+│   │       ├── simli.py         # Simli real-time lip-sync avatar (primary)
 │   │       ├── cloud_base.py    # Base class for cloud avatar services
-│   │       ├── liveportrait_cloud.py  # LivePortrait via Modal/RunPod
+│   │       ├── did_streaming.py # D-ID WebRTC streaming (legacy)
 │   │       ├── buffer.py        # Audio chunk buffering + resampling
-│   │       ├── audio_utils.py   # Audio resampling utilities
+│   │       ├── audio_utils.py   # Audio resampling utilities (24kHz → 16kHz)
 │   │       └── metrics.py       # Performance metrics tracking
 │   │
 │   ├── control/             # Control plane: emotion + character mapping
@@ -102,7 +96,9 @@ tth/
 ├── tests/                   # pytest test suite
 │   ├── test_types.py        # Core types validation
 │   ├── test_mapper.py       # Control mapping logic
-│   └── test_adapters.py     # Adapter behavior tests
+│   ├── test_adapters.py     # Adapter behavior tests
+│   ├── test_avatar_generation.py  # Avatar adapter tests
+│   └── test_simli_adapter.py     # Simli-specific tests
 │
 ├── scripts/                 # Development and testing scripts
 │   ├── run_phased_tests.py  # Master test runner
@@ -130,6 +126,9 @@ tth/
     ├── ARCHITECTURE.md      # This file
     ├── ADAPTERS.md          # Adapter documentation
     ├── REALTIME_API.md      # Realtime API integration guide
+    ├── CODEBASE_DESIGN.md   # Design document
+    ├── QUICKREF.md          # Quick reference
+    ├── PROGRESS.md          # Implementation progress
     └── MEMORY.md            # Operational notes
 ```
 
@@ -161,11 +160,13 @@ components:
     primary: openai_realtime
     model: gpt-4o-realtime-preview
   avatar:
-    primary: stub_avatar
+    primary: simli
+    fallback: [stub_avatar]
 ```
 
 API keys are loaded from environment only (never in YAML):
 - `OPENAI_API_KEY` (required for Realtime API)
+- `SIMLI_API_KEY` (required for Simli avatar)
 
 ### 3. Adapter Registry (`src/tth/core/registry.py`)
 
@@ -244,30 +245,33 @@ Features:
 
 ### 8. Cloud Avatar Adapters (`src/tth/adapters/avatar/`)
 
-The avatar subsystem supports both local stub adapters and cloud-based real-time avatar generation:
+The avatar subsystem supports stub adapters for offline testing and cloud-based real-time avatar generation via Simli:
 
-**Architecture**:
+**Architecture (Simli)**:
 ```
-TTH Server ──WebSocket──► Cloud GPU Service (LivePortrait)
+TTH Server ──WebSocket──► Simli API
     │                           │
-    │ AudioChunk (24kHz PCM)    │ VideoFrame (JPEG)
+    │ PCM audio (16kHz)         │ JPEG frames
     │ ─────────────────────────►│
     │                           │
     │◄───────────────────────── │
 ```
 
+The orchestrator starts a persistent relay task at session start for push-model adapters like Simli. Audio from the Realtime API is resampled from 24kHz to 16kHz and forwarded continuously over a binary WebSocket. Simli returns JPEG frames which are sent to the browser as `video_frame` events.
+
 **Components**:
+- `SimliAdapter`: Primary avatar adapter — real-time lip-sync via Simli WebSocket
 - `CloudAvatarAdapterBase`: Base class with WebSocket management, reconnection, health checks, interrupt handling
-- `LivePortraitCloudAdapter`: Modal/RunPod deployment for real-time avatar generation
 - `MockCloudAvatarAdapter`: Simulates cloud latency for offline testing
-- `AudioChunkBuffer`: Buffers and resamples audio (24kHz → 16kHz for LivePortrait)
+- `StubAvatarAdapter`: Placeholder RGB frames for offline testing
+- `AudioChunkBuffer`: Buffers and resamples audio (24kHz → 16kHz)
 - `AudioResampler`: High-quality sample rate conversion using scipy
 
 **Latency Budget** (for real-time interaction):
 | Stage | Target |
 |-------|--------|
 | LLM+TTS (Realtime API) | ~200-500ms |
-| Avatar generation | **<300ms** |
+| Avatar generation (Simli) | **<300ms** |
 | Network transfer | ~50-100ms |
 
 ### 9. Client-Side Rendering (`client/`)
@@ -358,7 +362,7 @@ make demo
 
 ## Configuration Profiles
 
-### v1 API-Only (Default)
+### Default (Simli avatar)
 
 ```yaml
 # config/base.yaml
@@ -367,24 +371,34 @@ components:
     primary: openai_realtime
     model: gpt-4o-realtime-preview
   avatar:
+    primary: simli
+    fallback: [stub_avatar]
+```
+
+### Offline Mock (no Simli API needed)
+
+```yaml
+# config/profiles/offline_mock.yaml
+components:
+  avatar:
     primary: stub_avatar
+    fallback: []
+```
+
+```bash
+TTH_PROFILE=offline_mock make dev
 ```
 
 ### Switching Providers
 
-To switch to a different avatar provider:
+Change avatar with no code edits — just update config:
 ```yaml
-# config/profiles/api_only_mac.yaml
+# config/base.yaml
 components:
   avatar:
-    primary: heygen          # requires HEYGEN_API_KEY + avatar_id
+    primary: mock_cloud_avatar   # dev/CI — no API key needed
+    # primary: simli             # production — requires SIMLI_API_KEY
 ```
-```bash
-# .env
-HEYGEN_API_KEY=...
-```
-
-No code changes required.
 
 ## Cost Estimates
 

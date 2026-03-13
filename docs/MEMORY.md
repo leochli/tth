@@ -1,10 +1,10 @@
 # TTH Memory (Operational Notes)
 
 ## Stable Defaults
-1. Config profile default: `api_only_mac`.
+1. Config: base.yaml uses `openai_realtime` + `simli` avatar (with `stub_avatar` fallback).
 2. Session transport: WebSocket JSON events.
 3. Media payloads are base64 in event JSON.
-4. Pipeline: Realtime API (combined LLM+TTS) → Avatar.
+4. Pipeline: Realtime API (combined LLM+TTS) → Simli Avatar.
 
 ## Key Commands
 1. Run unit tests:
@@ -27,12 +27,9 @@
 ## Known Issues
 
 ### `offline_mock` Profile Compatibility
-The `offline_mock` profile is designed for offline testing but currently requires the Realtime API because the orchestrator is hardcoded to use `OpenAIRealtimeAdapter`. This means:
-- Phase 2 passes because it only checks for audio/video output
-- Phase 3 fails because it expects mock adapter behavior (e.g., "exciting" in text)
-- The profile config has `llm:` and `tts:` components but these are ignored
+The `offline_mock` profile overrides the avatar to `stub_avatar` so tests run without Simli's API. The Realtime API adapter (`openai_realtime`) is still used, so `OPENAI_API_KEY` is required even in offline mode.
 
-**Future fix**: Create a mock realtime adapter or make the orchestrator configurable.
+**Future fix**: Create a mock realtime adapter or make the orchestrator configurable for fully offline testing.
 
 ### Realtime API Limitations
 The Realtime API does not support:

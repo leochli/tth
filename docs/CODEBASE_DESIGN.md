@@ -8,14 +8,16 @@ TTH is a lean, AI-native realtime text-to-human pipeline with:
 4. Config-driven provider swapping (`api` vs `self_host`) without orchestration changes.
 
 ## 2) Runtime Modes
-1. `api_only_mac` (default):
-   - `openai_realtime` (combined LLM+TTS) + `stub_avatar`.
+1. Default (base.yaml):
+   - `openai_realtime` (combined LLM+TTS) + `simli` avatar (fallback `stub_avatar`).
    - Single WebSocket connection for reduced latency.
+   - Requires `OPENAI_API_KEY` + `SIMLI_API_KEY`.
 2. `offline_mock`:
-   - `mock_llm` + `mock_tts` + `stub_avatar`.
-   - No network required; deterministic for CI/local debugging.
-   - Note: This profile uses the legacy LLM→TTS pipeline, not Realtime API.
+   - `openai_realtime` + `stub_avatar`.
+   - No Simli API needed; placeholder frames for testing.
+   - Still requires `OPENAI_API_KEY` (orchestrator is hardcoded to Realtime API).
 3. Future profiles:
+   - Mock realtime adapter for fully offline testing.
    - Self-hosted adapters by config only.
 
 ## 3) End-to-End Flow
@@ -45,14 +47,15 @@ src/tth/
     base.py                # adapter interface contract
     realtime/
       openai_realtime.py   # OpenAI Realtime API (combined LLM+TTS via WebSocket)
-    llm/
-      openai_api.py        # live OpenAI LLM stream (legacy, for offline_mock)
-      mock_llm.py          # deterministic offline LLM stream
-    tts/
-      openai_tts.py        # live OpenAI TTS stream (legacy, for offline_mock)
-      mock_tts.py          # deterministic offline pseudo-audio stream
     avatar/
+      simli.py             # Simli real-time lip-sync avatar (primary)
       stub.py              # placeholder frame stream with sync-friendly timestamps
+      mock_cloud.py        # simulated cloud latency for dev/CI
+      cloud_base.py        # base class for cloud avatar services
+      did_streaming.py     # D-ID WebRTC streaming (legacy)
+      buffer.py            # audio chunk buffering + resampling
+      audio_utils.py       # sample rate conversion (24kHz → 16kHz)
+      metrics.py           # performance metrics tracking
 
   control/
     mapper.py              # control merge + provider mappings + prompt style hints

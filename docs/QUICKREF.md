@@ -29,20 +29,17 @@ make demo-interactive                 # Interactive demo (requires running serve
 | Core types | `src/tth/core/types.py` |
 | Config | `src/tth/core/config.py`, `config/base.yaml` |
 | Realtime adapter | `src/tth/adapters/realtime/openai_realtime.py` |
-| LLM adapter (legacy) | `src/tth/adapters/llm/openai_api.py` |
-| TTS adapter (legacy) | `src/tth/adapters/tts/openai_tts.py` |
 | Avatar adapters | `src/tth/adapters/avatar/` |
-| - Stub | `src/tth/adapters/avatar/stub.py` |
+| - Simli (primary) | `src/tth/adapters/avatar/simli.py` |
 | - Mock cloud | `src/tth/adapters/avatar/mock_cloud.py` |
+| - Stub | `src/tth/adapters/avatar/stub.py` |
 | - Cloud base | `src/tth/adapters/avatar/cloud_base.py` |
-| - LivePortrait | `src/tth/adapters/avatar/liveportrait_cloud.py` |
 | Audio utilities | `src/tth/adapters/avatar/audio_utils.py`, `buffer.py` |
 | Control mapping | `src/tth/control/mapper.py` |
 | Orchestrator | `src/tth/pipeline/orchestrator.py` |
 | Session | `src/tth/pipeline/session.py` |
 | API routes | `src/tth/api/routes.py` |
 | Client rendering | `client/avatar_renderer.js`, `client/av_sync.js` |
-| Modal deployment | `deployment/modal/avatar_service/app.py` |
 | Tests | `tests/`, `scripts/phase_*.py` |
 | Interactive test | `scripts/interactive_test.py` |
 | Interactive demo | `scripts/interactive_demo.py` |
@@ -156,33 +153,31 @@ components:
 
 ```bash
 OPENAI_API_KEY=sk-...       # Required for Realtime API
-MODAL_API_KEY=...           # For LivePortrait cloud avatar (optional)
-TTH_PROFILE=api_only_mac    # Config profile
+SIMLI_API_KEY=...           # Required for Simli avatar
+TTH_PROFILE=offline_mock    # Use stub avatar (no Simli API needed)
 ```
 
 ## Avatar Profiles
 
 ```yaml
-# Default: Stub adapter (no API)
+# Default (base.yaml): Simli real-time lip-sync
+components:
+  avatar:
+    primary: simli
+    fallback: [stub_avatar]
+
+# Offline testing (config/profiles/offline_mock.yaml)
 components:
   avatar:
     primary: stub_avatar
+    fallback: []
 
 # Development: Mock cloud with simulated latency
-# config/profiles/offline_mock.yaml
 components:
   avatar:
     primary: mock_cloud_avatar
     mock_cloud_avatar:
       simulated_latency_ms: 150
-
-# Production: LivePortrait on Modal
-components:
-  avatar:
-    primary: liveportrait_cloud
-    liveportrait_cloud:
-      endpoint_url: "https://your-name--liveportrait-avatar.modal.run"
-      min_chunk_ms: 200
 ```
 
 ## Acceptance Criteria

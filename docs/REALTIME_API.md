@@ -253,20 +253,6 @@ For a typical 5-turn conversation (~30 seconds audio):
 
 ## Migration from LLM → TTS Pipeline
 
-If you need to use the legacy LLM → TTS pipeline (e.g., for speech rate control):
+The separate LLM → TTS pipeline has been replaced by the Realtime API. Legacy LLM and TTS adapter files have been removed from the codebase. The orchestrator is hardcoded to use the Realtime API.
 
-1. Use the `offline_mock` profile which still uses separate adapters
-2. Or modify the orchestrator to use separate LLM and TTS adapters
-
-```yaml
-# config/profiles/offline_mock.yaml
-components:
-  llm:
-    primary: mock_llm
-  tts:
-    primary: mock_tts
-  avatar:
-    primary: stub_avatar
-```
-
-Note: This profile requires a different orchestrator configuration.
+If you need speech rate or pitch control, these are not supported by the Realtime API (see Limitations above). A future mock realtime adapter could enable fully offline testing.

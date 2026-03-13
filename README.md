@@ -88,27 +88,28 @@ make demo    # Terminal 2: CLI client
 ```
 tth/
 ├── src/tth/
-│   ├── core/           # Types, config, registry
+│   ├── core/           # Types, config, registry, logging
 │   ├── adapters/
-│   │   ├── llm/        # OpenAI Chat, Anthropic, mock
-│   │   ├── tts/        # OpenAI TTS, ElevenLabs, mock
+│   │   ├── base.py     # AdapterBase ABC
+│   │   ├── realtime/   # OpenAI Realtime API (combined LLM+TTS)
 │   │   └── avatar/
-│   │       ├── stub.py              # Placeholder RGB frames
-│   │       ├── mock_cloud.py        # Simulated cloud adapter (CI/dev)
-│   │       ├── simli.py             # Simli real-time avatar (primary)
-│   │       ├── did_streaming.py     # D-ID WebRTC streaming (legacy)
-│   │       ├── did_cloud.py         # D-ID Talks API (text-to-video, legacy)
-│   │       ├── liveportrait_cloud.py
-│   │       └── cloud_base.py        # Base class for cloud adapters
-│   ├── control/        # Emotion/character mapping
+│   │       ├── stub.py          # Placeholder RGB frames (offline testing)
+│   │       ├── mock_cloud.py    # Simulated cloud adapter (CI/dev)
+│   │       ├── simli.py         # Simli real-time lip-sync (primary)
+│   │       ├── cloud_base.py    # Base class for cloud avatar adapters
+│   │       ├── buffer.py        # Audio chunk buffering + resampling
+│   │       ├── audio_utils.py   # Sample rate conversion (24kHz → 16kHz)
+│   │       └── metrics.py       # Performance metrics tracking
+│   ├── control/        # Emotion/character mapping, personas
 │   ├── pipeline/       # Orchestrator + session management
 │   ├── alignment/      # A/V drift control
 │   └── api/
-│       ├── main.py     # FastAPI app
-│       ├── routes.py   # REST + WebSocket + D-ID routes
-│       └── static/     # Browser demo (demo.html, did_webrtc.js, …)
-├── client/             # Standalone browser client files
-├── config/             # YAML configuration profiles
+│       ├── main.py     # FastAPI app factory + lifespan
+│       ├── routes.py   # REST + WebSocket endpoints
+│       └── static/     # Browser demo (demo.html, avatar_renderer, …)
+├── client/             # Standalone browser client (A/V sync, canvas renderer)
+├── config/             # YAML configuration (base + profiles)
+├── scripts/            # Phased test runners, demos
 ├── tests/              # pytest suite
 └── docs/               # Architecture documentation
 ```
@@ -157,12 +158,9 @@ Available avatar adapters:
 
 | Adapter | Description | API Key |
 |---------|-------------|---------|
-| `stub_avatar` | Placeholder frames, no external calls | — |
+| `simli` | Simli real-time lip-sync, <300ms latency (primary) | `SIMLI_API_KEY` |
 | `mock_cloud_avatar` | Simulated latency, JPEG frames (dev/CI) | — |
-| `simli` | Simli real-time lip-sync, <300ms latency | `SIMLI_API_KEY` |
-| `liveportrait_cloud` | LivePortrait via Modal/RunPod WebSocket | `MODAL_API_KEY` |
-| `did_streaming` | D-ID Agents SDK, WebRTC to browser (legacy) | `DID_API_KEY` |
-| `did_cloud` | D-ID Talks API, text-to-video (legacy) | `DID_API_KEY` |
+| `stub_avatar` | Placeholder RGB frames, no external calls | — |
 
 ### Environment Variables
 
@@ -170,14 +168,8 @@ Available avatar adapters:
 # Required
 OPENAI_API_KEY=sk-...
 
-# Avatar providers (pick one)
+# Avatar provider
 SIMLI_API_KEY=...          # Simli real-time avatars (primary)
-MODAL_API_KEY=...          # LivePortrait on Modal
-DID_API_KEY=...            # D-ID (legacy)
-
-# Optional alternative providers
-ANTHROPIC_API_KEY=...
-ELEVENLABS_API_KEY=...
 ```
 
 ### Switching Providers
