@@ -141,7 +141,9 @@ class SimliAvatarAdapter(AdapterBase):
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.warning(f"Simli frame consumer ended: {e}")
+            logger.error(f"Simli frame consumer died unexpectedly: {type(e).__name__}: {e}")
+        else:
+            logger.warning("Simli frame consumer: video stream ended normally")
         finally:
             self._is_healthy = False
 
@@ -173,72 +175,81 @@ class SimliAvatarAdapter(AdapterBase):
     async def infer_stream(
         self, input: AudioChunk, control: TurnControl, context: dict[str, Any]
     ) -> AsyncIterator[VideoFrame]:
-        """Stream audio to Simli, yield lip-synced JPEG frames.
-
-        Args:
-            input: AudioChunk (PCM, 24kHz — resampled to 16kHz by AudioChunkBuffer)
-            control: TurnControl with emotion/character settings
-            context: Pipeline context with session_id
-
-        Yields:
-            VideoFrame objects (JPEG encoded)
-        """
-        # Reconnect if unhealthy
+        """Feed audio to Simli. Frames are delivered via relay_frames()."""
         if not self._is_healthy:
             if not await self._reconnect():
-                async for frame in self._fallback_to_stub(input, control, context):
-                    yield frame
-                return
+                await self._push_stub_frames(input, control, context)
+            return
+            yield  # makes this an async generator
 
-        # Drain any frames that arrived since the last call (Simli has inherent
-        # latency, so frames from previously-sent audio batches accumulate here).
-        while not self._pending_frames.empty():
-            try:
-                yield self._pending_frames.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-
-        # Buffer and resample audio (24kHz → 16kHz)
         ready, resampled = self._buffer.add(input)
         if not ready or resampled is None:
             return
+            yield  # makes this an async generator
 
-        # Send binary PCM audio to Simli via WebSocket
         try:
             await self._client.send(resampled)
         except Exception as e:
             logger.error(f"Failed to send audio to Simli: {e}")
             self._is_healthy = False
-            return
+        return
+        yield  # makes this an async generator
 
-        # After sending audio, wait for the first frame that Simli generates
-        # in response.  Simli has 200-400 ms of latency, so a simple non-blocking
-        # drain misses all of these frames.  We block up to _FRAME_WAIT_S so the
-        # orchestrator doesn't move on before Simli has produced anything.
-        _FRAME_WAIT_S = 0.5
-        try:
-            frame = await asyncio.wait_for(self._pending_frames.get(), timeout=_FRAME_WAIT_S)
-            yield frame
-        except asyncio.TimeoutError:
-            logger.debug("Simli: no frame within %.0f ms after audio send", _FRAME_WAIT_S * 1000)
-            return
+    async def _push_stub_frames(
+        self, input: AudioChunk, control: TurnControl, context: dict[str, Any]
+    ) -> None:
+        from tth.adapters.avatar.stub import StubAvatarAdapter
 
-        # Drain any additional frames that also arrived during the wait.
+        logger.warning("Simli unavailable — pushing stub frames to relay")
+        stub = StubAvatarAdapter({})
+        async for frame in stub.infer_stream(input, control, context):
+            try:
+                self._pending_frames.put_nowait(frame)
+            except asyncio.QueueFull:
+                pass
+
+    async def relay_frames(self, stop: asyncio.Event) -> AsyncIterator[VideoFrame]:
+        """Yield frames from Simli's WebRTC stream until stop+drain.
+
+        Drain window is TIME-BASED: we collect frames for at most _DRAIN_S seconds
+        after stop is signalled, regardless of how many idle frames Simli sends.
+        This prevents an infinite loop when handleSilence=True keeps generating
+        frames after the turn ends.
+        """
+        # Discard stale frames from previous turn / silence period
         while not self._pending_frames.empty():
             try:
-                yield self._pending_frames.get_nowait()
+                self._pending_frames.get_nowait()
             except asyncio.QueueEmpty:
                 break
 
-    async def _fallback_to_stub(
-        self, input: AudioChunk, control: TurnControl, context: dict[str, Any]
-    ) -> AsyncIterator[VideoFrame]:
-        from tth.adapters.avatar.stub import StubAvatarAdapter
+        _POLL_S = 0.05  # 50ms poll interval during active turn
+        _DRAIN_S = 1.0  # total drain window after stop (covers Simli's ~300ms latency)
 
-        logger.warning("Simli unavailable — falling back to stub")
-        stub = StubAvatarAdapter({})
-        async for frame in stub.infer_stream(input, control, context):
-            yield frame
+        loop = asyncio.get_running_loop()
+        drain_start: float | None = None
+
+        while True:
+            if stop.is_set():
+                if drain_start is None:
+                    drain_start = loop.time()
+                elapsed = loop.time() - drain_start
+                if elapsed >= _DRAIN_S:
+                    break
+                timeout = _DRAIN_S - elapsed
+            else:
+                timeout = _POLL_S
+
+            try:
+                frame = await asyncio.wait_for(self._pending_frames.get(), timeout=timeout)
+                yield frame
+            except asyncio.TimeoutError:
+                if stop.is_set():
+                    if drain_start is None:
+                        drain_start = loop.time()
+                    if loop.time() - drain_start >= _DRAIN_S:
+                        break  # drain window fully expired
+                    # else: stop fired during poll timeout — re-enter with drain window
 
     async def interrupt(self) -> None:
         self._buffer.reset()
@@ -263,6 +274,7 @@ class SimliAvatarAdapter(AdapterBase):
             supports_streaming=True,
             supports_emotion=False,
             supports_identity=True,
+            has_streaming_frames=True,
         )
 
     async def close(self) -> None:

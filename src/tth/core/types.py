@@ -92,6 +92,7 @@ class AdapterCapabilities(BaseModel):
     supports_identity: bool = False
     max_text_length: int = 5000
     supported_emotions: list[str] = []
+    has_streaming_frames: bool = False  # True for push-model adapters (Simli WebRTC)
 
 
 # ── Events (outbound to client) ───────────────────────────────────────────────

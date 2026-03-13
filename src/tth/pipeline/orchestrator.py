@@ -37,6 +37,55 @@ class Orchestrator:
         self.realtime = realtime
         self.avatar = avatar
 
+    async def start_session(self, session: Session, output_q: asyncio.Queue[Any]) -> None:
+        """Start the persistent avatar relay task for a WebSocket session.
+
+        For push-model adapters (e.g. Simli), the relay runs continuously for
+        the lifetime of the WebSocket connection — covering active turns AND
+        the idle periods between turns (Simli's handleSilence=True keeps the
+        avatar animating throughout). Call session.cancel_relay() on disconnect.
+
+        For pull-model adapters (stub/mock), relay is managed per-turn inside
+        run_turn() and this method is a no-op.
+        """
+        if not self.avatar.capabilities().has_streaming_frames:
+            return
+
+        frame_counter = 0
+        stop_never = asyncio.Event()  # intentionally never set
+
+        async def _persistent_relay() -> None:
+            nonlocal frame_counter
+            try:
+                async for frame in self.avatar.relay_frames(stop_never):
+                    drift = session.drift_controller.update(
+                        session.last_audio_ts[0], frame.timestamp_ms
+                    )
+                    event = VideoFrameEvent(
+                        data=frame.data,
+                        timestamp_ms=frame.timestamp_ms,
+                        frame_index=frame_counter,
+                        width=frame.width,
+                        height=frame.height,
+                        content_type=frame.content_type,
+                        drift_ms=drift,
+                    )
+                    # Non-blocking put: drop the frame rather than blocking audio delivery.
+                    # Video frames are ephemeral (a dropped frame is acceptable); blocking
+                    # here would starve AudioChunkEvents that run_turn puts into the same
+                    # queue, causing the client to hear no audio when the queue is full.
+                    try:
+                        output_q.put_nowait(event)
+                    except asyncio.QueueFull:
+                        pass  # drop frame; send_loop will catch up
+                    frame_counter += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Avatar persistent relay died: {e}")
+
+        session.relay_task = asyncio.create_task(_persistent_relay())
+
     async def run_turn(
         self,
         session: Session,
@@ -67,40 +116,56 @@ class Orchestrator:
         frame_counter = 0
         full_response: list[str] = []
 
-        # Avatar runs in a concurrent task so audio is never blocked waiting for
-        # Simli's 200-400ms processing latency.  Each (audio_chunk, audio_ts) pair
-        # is placed on avatar_q; the worker drives infer_stream sequentially and
-        # puts VideoFrameEvents in output_q as they arrive.
+        is_push = self.avatar.capabilities().has_streaming_frames
         avatar_q: asyncio.Queue[tuple[AudioChunk, float] | None] = asyncio.Queue(maxsize=32)
 
-        async def _avatar_worker() -> None:
-            nonlocal frame_counter
-            while True:
-                item = await avatar_q.get()
-                if item is None:
-                    break
-                audio_chunk, audio_ts = item
-                ctx = {
-                    **session.context,
-                    "frame_counter": frame_counter,
-                    "session_id": session.id,
-                }
-                async for frame in self.avatar.infer_stream(audio_chunk, resolved, ctx):
-                    drift = session.drift_controller.update(audio_ts, frame.timestamp_ms)
-                    await output_q.put(
-                        VideoFrameEvent(
-                            data=frame.data,
-                            timestamp_ms=frame.timestamp_ms,
-                            frame_index=frame.frame_index,
-                            width=frame.width,
-                            height=frame.height,
-                            content_type=frame.content_type,
-                            drift_ms=drift,
-                        )
-                    )
-                    frame_counter += 1
+        if is_push:
+            async def _feed_audio() -> None:
+                while True:
+                    item = await avatar_q.get()
+                    if item is None:
+                        break
+                    audio_chunk, audio_ts = item
+                    session.last_audio_ts[0] = audio_ts
+                    ctx = {
+                        **session.context,
+                        "session_id": session.id,
+                    }
+                    async for _ in self.avatar.infer_stream(audio_chunk, resolved, ctx):
+                        pass  # yields nothing for push model
 
-        avatar_task = asyncio.create_task(_avatar_worker())
+            feed_task = asyncio.create_task(_feed_audio())
+
+        else:
+            # Pull model: existing sequential worker (stub/mock adapters)
+            async def _avatar_worker() -> None:
+                nonlocal frame_counter
+                while True:
+                    item = await avatar_q.get()
+                    if item is None:
+                        break
+                    audio_chunk, audio_ts = item
+                    ctx = {
+                        **session.context,
+                        "frame_counter": frame_counter,
+                        "session_id": session.id,
+                    }
+                    async for frame in self.avatar.infer_stream(audio_chunk, resolved, ctx):
+                        drift = session.drift_controller.update(audio_ts, frame.timestamp_ms)
+                        await output_q.put(
+                            VideoFrameEvent(
+                                data=frame.data,
+                                timestamp_ms=frame.timestamp_ms,
+                                frame_index=frame.frame_index,
+                                width=frame.width,
+                                height=frame.height,
+                                content_type=frame.content_type,
+                                drift_ms=drift,
+                            )
+                        )
+                        frame_counter += 1
+
+            avatar_task = asyncio.create_task(_avatar_worker())
 
         # Send user text and stream response (connection already established)
         session.transition("LLM_RUN")
@@ -127,19 +192,32 @@ class Orchestrator:
                     await avatar_q.put((audio_chunk, event.timestamp_ms))
 
         except asyncio.CancelledError:
-            avatar_task.cancel()
-            try:
-                await avatar_task
-            except asyncio.CancelledError:
-                pass
+            if is_push:
+                feed_task.cancel()
+                try:
+                    await feed_task
+                except asyncio.CancelledError:
+                    pass
+            else:
+                avatar_task.cancel()
+                try:
+                    await avatar_task
+                except asyncio.CancelledError:
+                    pass
             raise
 
-        # Signal worker to stop and wait for any in-flight frames to drain
+        # Shutdown audio pipeline; relay continues independently for idle animation
         await avatar_q.put(None)
-        try:
-            await avatar_task
-        except Exception as e:
-            logger.error(f"Avatar pipeline error: {e}")
+        if is_push:
+            try:
+                await feed_task  # ensure all audio sent to Simli
+            except Exception as e:
+                logger.error(f"Avatar feed error: {e}")
+        else:
+            try:
+                await avatar_task
+            except Exception as e:
+                logger.error(f"Avatar pipeline error: {e}")
 
         # Track assistant response in history
         if full_response:

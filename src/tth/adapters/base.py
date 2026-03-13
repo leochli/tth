@@ -1,5 +1,6 @@
 # src/tth/adapters/base.py
 from __future__ import annotations
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator
 from tth.core.types import (
@@ -38,6 +39,11 @@ class AdapterBase(ABC):
         Called when user sends InterruptEvent or new user_text arrives.
         """
         pass  # Default: no-op for adapters that don't support interruption
+
+    async def relay_frames(self, stop: asyncio.Event) -> AsyncIterator[VideoFrame]:
+        """Yield frames from background stream. Override in push-model adapters."""
+        return
+        yield  # makes this an async generator
 
     @abstractmethod
     async def health(self) -> HealthStatus: ...

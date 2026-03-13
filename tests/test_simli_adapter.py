@@ -186,36 +186,101 @@ async def test_infer_stream_sends_audio_when_buffer_full():
 
 
 @pytest.mark.asyncio
-async def test_infer_stream_yields_queued_frames():
-    """Frames already in the queue are yielded when audio is sent."""
+async def test_infer_stream_does_not_yield_frames():
+    """Push model: infer_stream is feed-only — frames come via relay_frames, not here."""
     adapter = SimliAvatarAdapter({"api_key_env": "SIMLI_API_KEY", "min_chunk_ms": 100})
     adapter._is_healthy = True
     adapter._client = _make_mock_client()
 
-    # Pre-load two frames into the queue (simulating _consume_frames output)
+    # Pre-load frames — they should NOT be yielded by infer_stream in push model
     for i in range(2):
         await adapter._pending_frames.put(_make_fake_video_frame())
 
     chunk = _make_audio_chunk(duration_ms=100.0)
     frames = [f async for f in adapter.infer_stream(chunk, _make_turn_control(), {})]
 
-    assert len(frames) == 2
-    assert all(f.content_type == "jpeg" for f in frames)
+    assert frames == [], "Push model: infer_stream must not yield frames"
+    # Frames remain in queue for relay_frames to deliver
+    assert adapter._pending_frames.qsize() == 2
 
 
 @pytest.mark.asyncio
-async def test_infer_stream_falls_back_to_stub_when_unhealthy():
-    """When not connected, infer_stream falls back to stub (not empty)."""
+async def test_infer_stream_unhealthy_pushes_stub_to_pending_queue():
+    """When not connected, infer_stream pushes stub frames to _pending_frames for relay."""
     adapter = SimliAvatarAdapter({"api_key_env": "SIMLI_API_KEY_MISSING_XYZ"})
     adapter._is_healthy = False
     adapter._client = None
 
     chunk = _make_audio_chunk(duration_ms=100.0)
-    # Stub yields raw_rgb frames; just check we get something back
     frames = [f async for f in adapter.infer_stream(chunk, _make_turn_control(), {})]
 
-    # Stub always yields at least one placeholder frame per call
-    assert len(frames) >= 1
+    # infer_stream yields nothing in push model
+    assert frames == []
+    # Stub frames were pushed to _pending_frames for relay_frames to pick up
+    assert adapter._pending_frames.qsize() >= 1
+
+
+@pytest.mark.asyncio
+async def test_relay_frames_delivers_pending_frames():
+    """relay_frames yields frames from _pending_frames queue."""
+    import asyncio as _asyncio
+    adapter = SimliAvatarAdapter({"api_key_env": "SIMLI_API_KEY", "min_chunk_ms": 100})
+
+    stop = _asyncio.Event()
+    collected: list[VideoFrame] = []
+
+    async def _collect():
+        async for f in adapter.relay_frames(stop):
+            collected.append(f)
+            if len(collected) >= 2:
+                stop.set()
+
+    async def _inject():
+        await _asyncio.sleep(0.08)  # let relay start past stale-discard phase
+        for i in range(2):
+            await adapter._pending_frames.put(_make_fake_video_frame())
+            await _asyncio.sleep(0.01)
+
+    await _asyncio.gather(
+        _asyncio.wait_for(_collect(), timeout=3.0),
+        _inject(),
+    )
+    assert len(collected) >= 2
+    assert all(f.content_type == "jpeg" for f in collected)
+
+
+@pytest.mark.asyncio
+async def test_relay_frames_discards_stale_on_start():
+    """relay_frames discards frames present before it starts (stale from last turn)."""
+    import asyncio as _asyncio
+    adapter = SimliAvatarAdapter({"api_key_env": "SIMLI_API_KEY", "min_chunk_ms": 100})
+
+    # Stale frames added before relay starts
+    for _ in range(3):
+        await adapter._pending_frames.put(_make_fake_video_frame())
+
+    stop = _asyncio.Event()
+    fresh_frames: list[VideoFrame] = []
+
+    async def _collect():
+        async for f in adapter.relay_frames(stop):
+            fresh_frames.append(f)
+            stop.set()
+
+    async def _inject():
+        await _asyncio.sleep(0.08)  # after relay has started and discarded stale frames
+        fresh = VideoFrame(
+            data=_make_fake_jpeg(), timestamp_ms=9999.0,
+            frame_index=99, width=64, height=64, content_type="jpeg",
+        )
+        await adapter._pending_frames.put(fresh)
+
+    await _asyncio.gather(
+        _asyncio.wait_for(_collect(), timeout=3.0),
+        _inject(),
+    )
+    assert len(fresh_frames) >= 1
+    assert fresh_frames[0].frame_index == 99, "Only fresh frame (idx=99) should be delivered"
 
 
 # ---------------------------------------------------------------------------

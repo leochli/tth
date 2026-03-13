@@ -38,6 +38,8 @@ class Session:
         }
         self.pending_control: TurnControl | None = None
         self.current_turn_task: asyncio.Task[None] | None = None
+        self.relay_task: asyncio.Task[None] | None = None
+        self.last_audio_ts: list[float] = [0.0]  # shared between feed and relay
         self.drift_controller = DriftController()
         self._state: str = "IDLE"
 
@@ -58,6 +60,16 @@ class Session:
                 pass
         self.current_turn_task = None
         self._state = "IDLE"
+
+    async def cancel_relay(self) -> None:
+        """Cancel the persistent relay task (call on session/WebSocket close)."""
+        if self.relay_task and not self.relay_task.done():
+            self.relay_task.cancel()
+            try:
+                await self.relay_task
+            except asyncio.CancelledError:
+                pass
+        self.relay_task = None
 
     def append_history(self, role: str, content: str) -> None:
         """Append a message to conversation history for multi-turn context."""

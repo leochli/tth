@@ -107,6 +107,9 @@ async def session_stream(ws: WebSocket, session_id: str):
     output_q: asyncio.Queue = asyncio.Queue(maxsize=64)
     await ws.accept()
 
+    # Start persistent avatar relay (no-op for pull-model adapters)
+    await orch.start_session(session, output_q)
+
     # ── Outbound: relay events to client; keep alive across turns ────────────
     async def send_loop() -> None:
         while True:
@@ -115,7 +118,8 @@ async def session_stream(ws: WebSocket, session_id: str):
                 await ws.send_text(event.model_dump_json())
             except WebSocketDisconnect:
                 return
-            except Exception:
+            except Exception as e:
+                _log.error("send_loop: unexpected WebSocket error, stopping", error=str(e))
                 return
 
     # ── Inbound: handle client messages ──────────────────────────────────────
@@ -176,6 +180,7 @@ async def session_stream(ws: WebSocket, session_id: str):
     finally:
         send_task.cancel()
         await session.cancel_current_turn()
+        await session.cancel_relay()
         sm.close(session_id)
 
 
