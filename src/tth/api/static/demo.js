@@ -67,6 +67,11 @@ class TTHDemoClient {
   }
 
   async connectServer() {
+    // Resume AudioContext synchronously in the gesture handler — required by Safari.
+    // Must happen before any `await`; once the call stack leaves the gesture handler,
+    // Safari will not allow AudioContext to start.
+    this.audioContext.resume();
+
     try {
       this._setStatus('Connecting...');
       this.connectBtn.disabled = true;
@@ -127,6 +132,10 @@ class TTHDemoClient {
   send() {
     const text = this.inputEl.value.trim();
     if (!text || !this.isConnected) return;
+
+    // Resume AudioContext in case it was auto-suspended (e.g. tab switch) — Safari requires
+    // this inside a gesture handler.
+    this.audioContext.resume();
 
     // Clear response
     this.responseText = '';
@@ -199,6 +208,10 @@ class TTHDemoClient {
 
   _handleAudioChunk(data) {
     console.log('Audio chunk received:', data.duration_ms, 'ms, sample_rate:', data.sample_rate);
+    // Resume AudioContext if suspended (e.g. browser auto-suspended on tab switch)
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
     // Decode base64 PCM
     const pcmData = decodeBase64PCM(data.data);
     this.avSync.scheduleAudioChunk(pcmData, data.sample_rate || 24000);
